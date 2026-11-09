@@ -1,0 +1,14 @@
+{
+  "name": "hostel-atatau",
+  "private": true,
+  "type": "module",
+  "workspaces": ["frontend", "backend"],
+  "engines": { "node": ">=22.14.0" },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run build --workspace frontend",
+    "start": "npm run start --workspace backend",
+    "test": "npm run test --workspace backend",
+    "check": "npm run check --workspace frontend"
+  }
+}

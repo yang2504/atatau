@@ -1,0 +1,1 @@
+ALTER TABLE notes ADD COLUMN reply_to INTEGER REFERENCES notes(id);

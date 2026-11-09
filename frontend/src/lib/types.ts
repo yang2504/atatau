@@ -1,0 +1,106 @@
+export type User = {
+  id: number;
+  name: string;
+  username: string;
+  role: "superadmin" | "admin" | "receptionist";
+  active: number;
+  chat_color: string | null;
+};
+export type Unit = {
+  id: number;
+  room_id: number;
+  label: string;
+  capacity: number;
+};
+export type Room = {
+  id: number;
+  name: string;
+  type: "private" | "dorm";
+  capacity: number;
+  active: number;
+  units: Unit[];
+  rates: { platform_id: number; nightly_cents: number }[];
+  guest_rates: { pax: number; breakfast: number; nightly_cents: number }[];
+};
+export type Platform = { id: number; name: string; active: number };
+export type Reservation = {
+  id: number;
+  guest_name: string;
+  pax: number;
+  check_in: string;
+  check_out: string;
+  platform_id: number;
+  platform_name: string;
+  status: "pending" | "confirmed" | "in_house" | "checked_out" | "cancelled";
+  breakfast: number;
+  checked_in_by_name: string | null;
+  checked_in_at: string | null;
+  folio_mode: "shared" | "individual";
+  comments: string;
+  nightly_cents: number | null;
+  arrival_time: string;
+  paid_nights: string[];
+  unit_ids: number[];
+  guests: { id: number; name: string }[];
+};
+export type Note = {
+  id: number;
+  body: string;
+  category: string;
+  room_id: number | null;
+  room_name: string | null;
+  guest_name: string | null;
+  reservation_id: number | null;
+  amount_cents: number | null;
+  resolved: number;
+  author: string;
+  created_by: number;
+  chat_color: string | null;
+  reply_author: string | null;
+  reply_preview: string | null;
+  created_at: string;
+};
+export type Folio = {
+  id: number;
+  reservation_id: number;
+  title: string;
+  guest_name: string;
+  pax: number;
+  check_in: string;
+  check_out: string;
+  status: string;
+  folio_mode: string;
+  guest_id: number | null;
+  platform_name: string;
+  nightly_cents: number | null;
+  arrival_time: string;
+};
+export type Payment = {
+  id: number;
+  day: string;
+  amount_cents: number;
+  surcharge_cents: number;
+  method: string;
+  author: string;
+  voided: number;
+};
+export type FolioEntry = {
+  service_id: number | null;
+  lodging_day: string | null;
+  day: string;
+  service: string;
+  detail: string;
+  total_cents: number;
+  paid_cents: number;
+  balance_cents: number;
+  author: string | null;
+  payments: Payment[];
+};
+export type Data = {
+  rooms: Room[];
+  reservations: Reservation[];
+  platforms: Platform[];
+  notes: Note[];
+  folios: Folio[];
+};
+export type Draft = { unit_id?: number; check_in?: string; check_out?: string };
