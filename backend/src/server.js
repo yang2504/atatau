@@ -1,6 +1,7 @@
 import { createApp } from "./app.js";
 import { openDatabase } from "./core/database.js";
 import { createServer } from "node:http";
+import { execFile } from "node:child_process";
 
 const host = "127.0.0.1";
 const port = 3001;
@@ -21,7 +22,10 @@ await new Promise((resolve) => {
 if (!server.listening) process.exit(1);
 const db = openDatabase();
 server.on("request", createApp(db));
-console.log(`Hostel Atatau · http://${host}:${port}`);
+const address = `http://${host}:${port}`;
+console.log(`Hostel Atatau · ${address}`);
+if (process.platform === "win32" && process.argv.includes("--open"))
+  execFile("explorer.exe", [address]);
 function stop() {
   server.close(() => {
     db.close();

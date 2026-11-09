@@ -4,3 +4,4 @@ frontend/dist/
 backend/data/
 *.log
 .env
+Hostel-Atatau-Windows-x64*.zip

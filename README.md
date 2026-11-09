@@ -2,11 +2,18 @@
 
 Sistema web local para recepción. **Primera base funcional**, con React + TypeScript + Vite en `frontend/` y Node.js + Express + SQLite en `backend/`. Los datos se guardan en un archivo local; no se usa ningún servicio externo para operar.
 
-## Requisitos y ejecución
+## Usar en Windows sin instalar herramientas
+
+Descarga el ZIP de Windows x64 desde [Releases](https://github.com/yang2504/atatau/releases/latest). Extrae toda la carpeta y abre **Iniciar-Atatau.cmd**. Se abrirá [Hostel Atatau](http://127.0.0.1:3001) en el navegador. Deja la ventana de la aplicación abierta mientras trabajas. Para detenerla, pulsa `Ctrl+C` en esa ventana.
+
+El paquete es para Windows 10/11 de 64 bits e incluye Node.js, SQLite, el servidor y la interfaz compilada. Usa el navegador instalado en la computadora. Una vez descargado y extraído, funciona sin internet, npm ni permisos de administrador.
+
+Los datos del paquete se guardan en `%LOCALAPPDATA%\HostelAtatau\data` para la cuenta de Windows que lo ejecuta. Puedes abrir esa ubicación con `Win+R`. Para actualizar, detén Atatau, respalda esa carpeta y extrae el nuevo ZIP en otra carpeta. Si ya tienes una base de la versión de desarrollo, detén las dos instancias y copia la carpeta `backend/data/` a `%LOCALAPPDATA%\HostelAtatau\data` antes del primer arranque del paquete. Si la carpeta de destino ya contiene datos, respáldala antes de sustituirla.
+
+## Desarrollo desde el código fuente
 
 - Node.js **22.14 o superior de la rama 22** (o una versión posterior compatible). Esta base usa `node:sqlite`; Node 22.14 lo incluye con aviso experimental. No hace falta instalar SQLite, PostgreSQL, Docker ni compiladores nativos.
 - Internet solo para descargar las dependencias durante la preparación del proyecto. La aplicación compilada funciona sin internet.
-- En esta computadora Node.js ya está disponible. El empaquetado con Node portátil y un botón de inicio queda para una etapa posterior; todavía no es un ejecutable autónomo.
 
 Desde la carpeta raíz:
 
@@ -27,6 +34,8 @@ npm start
 Abrir **http://127.0.0.1:3001**. En este modo Node sirve tanto el frontend compilado como la API. Detener con `Ctrl+C`.
 
 Si el arranque indica `EADDRINUSE`, el puerto ya está ocupado. Prueba abrir la dirección indicada. Si ya está abierta una instancia del sistema y necesitas reiniciarla, pulsa `Ctrl+C` en su terminal antes de volver a ejecutar el comando.
+
+Para generar el paquete de Windows desde el código, instala las dependencias con `npm ci` y ejecuta `powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1` desde la raíz. El script descarga la versión fijada de Node.js, verifica su suma SHA-256 y empaqueta solo los componentes de ejecución.
 
 ## Qué funciona
 
@@ -84,7 +93,9 @@ Nadie puede desactivar su propio usuario. La gestión de roles existentes, recup
 
 ## Datos y respaldo
 
-Base: `backend/data/atatau.sqlite`. También pueden existir los archivos `-wal` y `-shm`. **Detener la aplicación antes de copiar toda la carpeta `backend/data/`** a una ubicación de respaldo. Para restaurar, detener la aplicación y recuperar esa carpeta completa. No compartir ni subir la base a Git. Los respaldos automáticos y su restauración desde la interfaz aún no están implementados.
+La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el paquete de Windows o `backend/data/` en desarrollo. También pueden existir archivos `-wal` y `-shm`. **Detén la aplicación antes de copiar toda la carpeta de datos** a una ubicación de respaldo. Para restaurar, detén la aplicación y recupera la carpeta completa. Mantén el respaldo fuera de Git.
+
+SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
 Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 001 agrega tarifas y movimientos. La 002 agrega reservas pendientes, perfiles, recargos, caja, inventario y tarifas por PAX. La 003 completa las respuestas en Novedades y la 004 agrega el registro de quién recibió a los huéspedes y cuándo.
 
@@ -105,7 +116,7 @@ Las pruebas usan SQLite en memoria y HTTP real: cruces, límites de fechas/capac
 1. Definir reglas de descuentos, reembolsos y arqueo por turno.
 2. Confirmar habitaciones reales, camas, moneda y datos requeridos por huésped.
 3. Definir si un grupo necesita varias habitaciones con una sola cuenta; el modelo actual reserva una habitación por reserva.
-4. Añadir bloqueo de camas por mantenimiento, copias automáticas, recuperación de contraseña y empaquetado portátil de un botón.
+4. Añadir bloqueo de camas por mantenimiento, copias automáticas y recuperación de contraseña.
 
 Consultar `AGENTS.md` antes de continuar y registrar cambios importantes en `docs/CAMBIOS.md`. Las decisiones de arquitectura están en `docs/ARQUITECTURA.md`.
 

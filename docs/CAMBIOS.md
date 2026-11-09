@@ -1,5 +1,11 @@
 # Cambios y decisiones importantes
 
+## 2026-11-09 — Paquete portátil para Windows
+
+- Se añadió un ZIP para Windows x64 con Node.js, SQLite integrado, dependencias de producción y la interfaz compilada. `Iniciar-Atatau.cmd` abre la aplicación local y guarda los datos en la carpeta de la cuenta de Windows.
+- El script de empaquetado verifica la suma SHA-256 de Node.js. El paquete parte sin datos personales ni credenciales. Se documentaron el traslado de una base existente, el respaldo y los límites de almacenamiento.
+- Pasaron `npm test`, `npm run check` y la compilación del paquete. Se hizo una prueba de capacidad con 1.000 reservas ficticias en memoria.
+
 ## 2026-11-09 — Navegación y comisión de tarjeta
 
 - La barra superior queda visible al desplazarse. El menú agrupa módulos por área y distingue el módulo activo con un indicador e iconos. Se mejoró el contraste de tablas y el diseño de encabezados y totales con la paleta existente.
