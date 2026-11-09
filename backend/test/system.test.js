@@ -565,6 +565,35 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal(holderSheets.length, 1);
     assert.equal(holderSheets[0].room_type, "private");
     assert.equal(holderSheets[0].title, "Encargada del grupo");
+
+    const promotionalSheet = `/folios/${holderSheets[0].id}`;
+    assert.equal((await request(promotionalSheet + "/payments", {
+      day: today, lodging_day: groupHolder.check_in, amount_cents: groupHolder.nightly_cents, method: "QR",
+    })).status, 201);
+    const extended = {
+      expected_check_in: groupHolder.check_in, expected_check_out: groupHolder.check_out,
+      check_in: "2099-09-30", check_out: "2099-10-03", extension_nightly_cents: 21000,
+    };
+    assert.equal((await request(holderPath + "/extend", extended)).status, 200);
+    assert.equal((await request(holderPath + "/extend", extended)).status, 409);
+    const nights = (await request(promotionalSheet)).body.entries;
+    assert.deepEqual(nights.map((row) => row.total_cents), [21000, groupHolder.nightly_cents, 21000]);
+    assert.deepEqual(nights.map((row) => row.balance_cents), [21000, 0, 21000]);
+    const continued = (await request("/reservations")).body.find((row) => row.id === holderBooking.body.id);
+    assert.deepEqual(continued.paid_nights, [groupHolder.check_in]);
+    assert.deepEqual(continued.night_rates, { "2099-09-30": 21000, "2099-10-02": 21000 });
+    assert.equal((await request("/reservations", {
+      ...groupHolder, status: "confirmed", check_in: "2099-10-03", check_out: "2099-10-04",
+    })).status, 201);
+    assert.equal((await request(holderPath + "/extend", {
+      ...extended, expected_check_in: extended.check_in, expected_check_out: extended.check_out,
+      check_out: "2099-10-04",
+    })).status, 409);
+    assert.equal((await request(promotionalSheet)).body.entries.length, 3);
+    assert.equal((await request(holderPath, {
+      ...continued, status: "in_house", check_in_payment: { amount_cents: 42000, method: "Efectivo" },
+    }, "PUT")).status, 200);
+    assert.ok((await request(promotionalSheet)).body.entries.every((row) => row.balance_cents === 0));
     assert.equal(
       (await request(`/users/${receptionist.body.id}`, { active: 0 }, "PATCH"))
         .status,

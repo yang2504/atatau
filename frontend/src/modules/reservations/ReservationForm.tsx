@@ -5,6 +5,7 @@ import { Modal, ErrorBox } from "../../components/UI";
 import { StayDates } from "./StayDates";
 import { cents, money, paymentMethods } from "../../lib/money";
 import { CardCharge } from "../../components/CardCharge";
+import { lodgingTotal, normalRoomRate } from "../../lib/lodging";
 
 export function ReservationForm({
   data,
@@ -53,16 +54,15 @@ export function ReservationForm({
   );
   const suggested =
     (platformId !== 1 ? room?.rates.find((rate) => rate.platform_id === platformId) : undefined) ??
-    room?.guest_rates.find((rate) => rate.pax === pax && rate.breakfast === breakfast) ??
-    room?.rates.find((rate) => rate.platform_id === 1);
+    normalRoomRate(room, pax, breakfast);
   const rate =
     rateOverride ??
     (!r && suggested ? (suggested.nightly_cents / 100).toFixed(2) : "");
   const nights = end ? daysBetween(start, end) : 0;
   const canArrive = r?.status === "confirmed" || r?.status === "pending";
-  const lodgingDue = /^\d{1,7}([.,]\d{1,2})?$/.test(rate)
-    ? Math.max(0, nights * cents(rate) - (r?.lodging_paid_cents ?? 0))
-    : 0;
+  const priced = /^\d{1,7}([.,]\d{1,2})?$/.test(rate);
+  const total = lodgingTotal(r, start, end, priced ? cents(rate) : 0);
+  const lodgingDue = Math.max(0, total - (r?.lodging_paid_cents ?? 0));
   const collect = collectOnArrival && lodgingDue > 0;
   const advanceBase = /^\d{1,9}([.,]\d{1,2})?$/.test(advanceAmount) ? cents(advanceAmount) : 0;
   const conflicting = new Set(
@@ -147,6 +147,9 @@ export function ReservationForm({
             setEnd(to);
           }}
         />
+        {canArrive || r?.status === "in_house" ? <p className="muted small">
+          Para agregar noches con otra tarifa, usa Alargar estadía en el calendario.
+        </p> : null}
         <div className="form-grid">
           <label>
             Habitación
@@ -280,7 +283,7 @@ export function ReservationForm({
         </p>}
         <div className="form-grid">
           <label>
-            Tarifa por noche para {pax} {pax === 1 ? "persona" : "personas"}{" "}
+            Tarifa {r && Object.keys(r.night_rates).length > 0 ? "original " : ""}por noche para {pax} {pax === 1 ? "persona" : "personas"}{" "}
             (Bs)
             <input
               inputMode="decimal"
@@ -300,10 +303,10 @@ export function ReservationForm({
             />
           </label>
         </div>
-        {rate && nights > 0 && /^\d{1,7}([.,]\d{1,2})?$/.test(rate) && (
+        {(priced || total > 0) && nights > 0 && (
           <p className="form-note">
             Hospedaje total · {nights} {nights === 1 ? "noche" : "noches"} ·{" "}
-            {money(cents(rate) * nights)}
+            {money(total)}
           </p>
         )}
         {!r && suggested && rateOverride !== null && (

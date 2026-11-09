@@ -1,5 +1,12 @@
 # Cambios y decisiones importantes
 
+## 2026-11-09 — Extender estadías con su propia tarifa
+
+- El calendario permite agregar noches al inicio o al final de una reserva activa. La extensión muestra la tarifa normal sugerida, el cargo adicional y el saldo. Las fechas originales conservan su tarifa y sus pagos.
+- La migración 008 guarda la tarifa acordada para las noches adicionales. La hoja de consumo, el cobro de estadía y los indicadores de pago del calendario usan la tarifa de cada noche.
+- La extensión comprueba disponibilidad y fechas esperadas dentro de la transacción. Una edición del mismo número de noches conserva el orden de las tarifas al mover fechas y valida los abonos existentes.
+- Pasaron las pruebas HTTP, la revisión de tipos y la compilación. Se probó el ZIP con una copia ficticia de v1.3.0 y se verificaron el acceso y el historial después de migrar.
+
 ## 2026-11-09 — Hojas por mes, alojamiento y encargado
 
 - Las hojas se listan por mes de llegada o de abono en dos grupos, habitaciones privadas y dormitorios. Las reservas pendientes nuevas generan sus hojas cuando se confirman o cuando se registra un adelanto.

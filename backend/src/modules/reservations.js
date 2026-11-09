@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { transaction } from "../core/database.js";
-import { MAX_NIGHTLY_CENTS, paidNights } from "./lodging.js";
+import { MAX_NIGHTLY_CENTS, nightDates, nightRates, paidNights } from "./lodging.js";
 import { localDay } from "../core/charges.js";
 import { canSeeSuperadmin } from "./users.js";
 import { ensureReservationFolios, recordStayPayment } from "./folios.js";
@@ -26,13 +26,16 @@ export function listReservations(db, full = 1) {
         LEFT JOIN users u ON u.id=r.checked_in_by ORDER BY r.check_in,r.id`,
     )
     .all()
-    .map(({ creator_role, check_in_role, ...r }) => ({
+    .map(({ creator_role, check_in_role, ...r }) => {
+      const rates = nightRates(db, r.id);
+      return {
       ...r,
       created_by: !full && creator_role === "superadmin" ? null : r.created_by,
       checked_in_by: !full && check_in_role === "superadmin" ? null : r.checked_in_by,
       checked_in_by_name: !full && check_in_role === "superadmin" ? null : r.checked_in_by_name,
       checked_in_at: !full && check_in_role === "superadmin" ? null : r.checked_in_at,
-      paid_nights: paidNights(db, r.id, r.nightly_cents),
+      night_rates: rates,
+      paid_nights: paidNights(db, r.id, r.nightly_cents, rates),
       unit_ids: db
         .prepare("SELECT unit_id FROM allocations WHERE reservation_id=?")
         .all(r.id)
@@ -42,20 +45,40 @@ export function listReservations(db, full = 1) {
           "SELECT id,name FROM guests WHERE reservation_id=? ORDER BY id",
         )
         .all(r.id),
-    }));
+      };
+    });
 }
-export function saveReservation(db, body, user, id = null) {
+export function saveReservation(db, body, user, id = null, extension = false) {
   return transaction(db, () => {
     const previous = id
       ? db.prepare("SELECT * FROM reservations WHERE id=?").get(id)
       : null;
     if (id && !previous) fail("Reserva inexistente.", 404);
+    let extensionRate;
+    if (extension) {
+      if (!["pending", "confirmed", "in_house"].includes(previous.status))
+        fail("Solo puedes alargar una reserva activa.", 409);
+      if (body.expected_check_in !== previous.check_in || body.expected_check_out !== previous.check_out)
+        fail("Las fechas de la reserva cambiaron. Vuelve a abrirla.", 409);
+      const checkIn = date(body.check_in);
+      const checkOut = date(body.check_out);
+      if (checkIn > previous.check_in || checkOut < previous.check_out ||
+          (checkIn === previous.check_in && checkOut === previous.check_out))
+        fail("Agrega al menos una noche y conserva las fechas originales.");
+      extensionRate = integer(body.extension_nightly_cents, "Tarifa de extensión", 0, MAX_NIGHTLY_CENTS);
+      body = {
+        ...previous, check_in: checkIn, check_out: checkOut,
+        unit_ids: db.prepare("SELECT unit_id FROM allocations WHERE reservation_id=?")
+          .all(id).map((row) => row.unit_id),
+      };
+    }
     const guestName = text(body.guest_name, "Huésped", 100),
       pax = integer(body.pax, "PAX", 1, 30);
     const start = date(body.check_in),
       end = date(body.check_out);
     if (end <= start) fail("La salida debe ser posterior a la entrada.");
-    if (Date.parse(end) - Date.parse(start) > 366 * 86400000)
+    const span = Date.parse(end) - Date.parse(start);
+    if (span > 366 * 86400000)
       fail("La estadía puede tener hasta 366 noches.");
     const nightlyCents =
       previous &&
@@ -69,6 +92,25 @@ export function saveReservation(db, body, user, id = null) {
       (arrivalTime && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(arrivalTime))
     )
       fail("Hora de llegada inválida.");
+    const originalRates = previous ? nightRates(db, id) : {};
+    let nextRates = originalRates;
+    const datesChanged = previous && (start !== previous.check_in || end !== previous.check_out);
+    if (datesChanged) {
+      const sameLength = span === Date.parse(previous.check_out) - Date.parse(previous.check_in);
+      if (!extension && !sameLength && (start < previous.check_in || end > previous.check_out))
+        fail("Usa Alargar estadía en el calendario para agregar noches con su propia tarifa.", 409);
+      if (extension) {
+        nextRates = { ...originalRates };
+        for (const day of nightDates(start, end))
+          if (day < previous.check_in || day >= previous.check_out) nextRates[day] = extensionRate;
+      } else if (sameLength) {
+        const shift = Date.parse(start) - Date.parse(previous.check_in);
+        nextRates = Object.fromEntries(Object.entries(originalRates).map(([day, rate]) =>
+          [new Date(Date.parse(day) + shift).toISOString().slice(0, 10), rate]));
+      } else {
+        nextRates = Object.fromEntries(Object.entries(originalRates).filter(([day]) => day >= start && day < end));
+      }
+    }
     if (previous) {
       const paid = db
         .prepare(
@@ -80,7 +122,7 @@ export function saveReservation(db, body, user, id = null) {
       if (
         paid.some(
           (p) =>
-            nightlyCents !== previous.nightly_cents ||
+            (nextRates[p.lodging_day] ?? nightlyCents) !== (originalRates[p.lodging_day] ?? previous.nightly_cents) ||
             p.lodging_day < start ||
             p.lodging_day >= end,
         )
@@ -247,7 +289,12 @@ export function saveReservation(db, body, user, id = null) {
       ).run(id, unit.id);
     if (["confirmed", "in_house", "checked_out"].includes(status) || advance != null)
       ensureReservationFolios(db, id, mode, sharedTitle);
-    audit(db, user, previous ? "update" : "create", "reservation", id);
+    if (datesChanged && (extension || Object.keys(originalRates).length)) {
+      db.prepare("DELETE FROM reservation_night_rates WHERE reservation_id=?").run(id);
+      const insert = db.prepare("INSERT INTO reservation_night_rates(reservation_id,day,nightly_cents) VALUES(?,?,?)");
+      for (const [day, rate] of Object.entries(nextRates)) insert.run(id, day, rate);
+    }
+    audit(db, user, extension ? "extend" : previous ? "update" : "create", "reservation", id);
     if (status === "in_house" && previous?.status !== "in_house" && !previous?.checked_in_by) {
       db.prepare("UPDATE reservations SET checked_in_by=?, checked_in_at=? WHERE id=?")
         .run(user.id, new Date().toISOString(), id);
@@ -282,6 +329,9 @@ export function reservationModule(db) {
   });
   router.post("/", (req, res) =>
     res.status(201).json(saveReservation(db, req.body, req.user)),
+  );
+  router.post("/:id/extend", (req, res) =>
+    res.json(saveReservation(db, req.body, req.user, integer(Number(req.params.id), "Reserva"), true)),
   );
   router.put("/:id", (req, res) =>
     res.json(

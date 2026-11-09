@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { Data, Draft, Reservation } from "../../lib/types";
 import {
   addDays,
@@ -13,12 +13,14 @@ export function Calendar({
   data,
   onCreate,
   onEdit,
+  onExtend,
   onMove,
   onRooms,
 }: {
   data: Data;
   onCreate: (draft: Draft) => void;
   onEdit: (r: Reservation) => void;
+  onExtend: (r: Reservation) => void;
   onMove: (r: Reservation, unit: number, date: string) => Promise<void>;
   onRooms: () => void;
 }) {
@@ -273,14 +275,17 @@ export function Calendar({
                               daysBetween(start, r.check_out),
                             );
                           const visibleNights = days.slice(left, right);
-                          const paymentStatus = (day: string) =>
-                            r.nightly_cents === null
+                          const paymentStatus = (day: string) => {
+                            const rate = r.night_rates[day] ?? r.nightly_cents;
+                            return rate === null
                               ? "Sin tarifa"
-                              : r.nightly_cents === 0
+                              : rate === 0
                                 ? "Sin cargo"
                                 : r.paid_nights.includes(day)
                                   ? "Pagada"
                                   : "Con saldo";
+                          };
+                          const extendable = unit.active && r.unit_ids[0] === unit.id && r.status !== "checked_out";
                           const colors = visibleNights.map((day) => {
                             const status = paymentStatus(day);
                             return status === "Pagada"
@@ -296,10 +301,10 @@ export function Calendar({
                             )
                             .join(", ");
                           return (
+                            <Fragment key={r.id}>
                             <button
                               draggable={!!unit.active}
-                              key={r.id}
-                              className={`reservation-block ${r.status}`}
+                              className={`reservation-block ${r.status}${extendable ? " can-extend" : ""}`}
                               style={{
                                 gridColumn: `${left + 2} / ${right + 2}`,
                                 background:
@@ -331,6 +336,15 @@ export function Calendar({
                                 </small>
                               </span>
                             </button>
+                            {extendable && <button
+                              type="button"
+                              className="reservation-extend"
+                              style={{ gridColumn: right + 1 }}
+                              aria-label={`Alargar estadía de ${r.guest_name}`}
+                              title="Alargar estadía"
+                              onClick={() => onExtend(r)}
+                            ><Icon name="plus" size={15} /></button>}
+                            </Fragment>
                           );
                         })}
                     </div>
@@ -343,6 +357,7 @@ export function Calendar({
       )}
       <div className="calendar-footer">
         <div className="legend">
+          <span>＋ Alargar estadía</span>
           <span><i className="legend-dot pending" /> Reserva pendiente</span>
           <span>
             <i className="legend-dot night-paid" />

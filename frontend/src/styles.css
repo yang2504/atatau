@@ -1895,6 +1895,24 @@ details[open] summary {
 .reservation-block small { font-size: 10px; opacity: 1; }
 .reservation-block.pending { border: 2px dashed #496b58; color: #294538; }
 .reservation-block.pending .reservation-avatar { background: transparent; }
+.reservation-block.can-extend { padding-inline-end: 30px; }
+.reservation-extend {
+  grid-row: 1;
+  justify-self: end;
+  align-self: center;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin-inline-end: 7px;
+  padding: 0;
+  border: 1px solid #9fb9a8;
+  border-radius: 6px;
+  background: #fff;
+  color: var(--green);
+}
+.reservation-extend:hover { background: #edf3e9; }
 .legend-dot.pending { background: transparent; border: 1px dashed #496b58; }
 
 .chat-panel { overflow: hidden; min-width: 0; }

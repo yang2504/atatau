@@ -13,6 +13,7 @@ import { nameMatches, reservationMatches } from "./lib/guestSearch";
 import { ErrorBox, Icon, Empty } from "./components/UI";
 import { Calendar } from "./modules/calendar/Calendar";
 import { ReservationForm } from "./modules/reservations/ReservationForm";
+import { ExtendStay } from "./modules/reservations/ExtendStay";
 import { Rooms } from "./modules/rooms/Rooms";
 import { Notes } from "./modules/notes/Notes";
 import { Settings } from "./modules/settings/Settings";
@@ -181,6 +182,7 @@ export default function App() {
     [error, setError] = useState(""),
     [query, setQuery] = useState("");
   const [selectedFolio, setSelectedFolio] = useState<Folio | null>(null);
+  const [extending, setExtending] = useState<Reservation | null>(null);
   const [editor, setEditor] = useState<{
     reservation?: Reservation;
     draft?: Draft;
@@ -259,6 +261,7 @@ export default function App() {
       setPage("calendar");
       setEditor(null);
       setSelectedFolio(null);
+      setExtending(null);
       setQuery("");
     } catch (e) {
       setError((e as Error).message);
@@ -440,6 +443,7 @@ export default function App() {
                 data={data}
                 onCreate={(draft) => setEditor({ draft })}
                 onEdit={(reservation) => setEditor({ reservation })}
+                onExtend={setExtending}
                 onMove={move}
                 onRooms={() => setPage("rooms")}
               />
@@ -668,6 +672,12 @@ export default function App() {
           onSaved={onSaved}
         />
       )}
+      {extending && <ExtendStay
+        reservation={extending}
+        room={data.rooms.find((room) => room.units.some((unit) => extending.unit_ids.includes(unit.id)))}
+        onClose={() => setExtending(null)}
+        onSaved={onSaved}
+      />}
     </div>
   );
 }

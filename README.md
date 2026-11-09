@@ -50,6 +50,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - El calendario indica las camas libres sobre el total de cada dormitorio para cada fecha. En privadas muestra si la habitación está libre u ocupada.
 - La barra superior permanece visible al desplazarse. **Buscar huésped** muestra resultados en vivo y abre reservas u hojas de consumo. Incluye acompañantes y búsquedas sin tildes. El menú lateral agrupa las pantallas por área.
 - Reservas con responsable, PAX, acompañantes opcionales, canal, fechas, notas y estado. Detección de cruces en backend dentro de una transacción.
+- El botón **+** de una reserva activa en el calendario abre **Alargar estadía**. Puedes agregar noches antes de la llegada o después de la salida. Las noches originales conservan su tarifa y sus abonos. Las adicionales usan la tarifa normal indicada al guardar. La sugerencia viene del talonario por PAX y desayuno o de la tarifa directa de la habitación.
 - Booking, Hostelworld y entrada directa disponibles. Agregar/inhabilitar plataformas conserva el historial. Son etiquetas de origen: **no hay sincronización con plataformas externas**.
 - Tres roles con permisos verificados en API. Sesiones de 12 horas; contraseñas con scrypt y salt. Desactivar un usuario impide nuevas peticiones con su sesión.
 - Selector visual de entrada y salida en el formulario, con resumen de noches y total del hospedaje antes de guardar.
@@ -110,7 +111,7 @@ La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el pa
 
 SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
-Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 007 agrega el encargado de la cuenta y conserva las hojas y los abonos existentes.
+Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 008 permite guardar tarifas para las noches adicionales y conserva las tarifas y los abonos existentes.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 

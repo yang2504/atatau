@@ -55,6 +55,7 @@ Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "err
 | `GET/POST /api/users`, `PATCH /api/users/:id` | Listar, crear, editar perfil y activar/desactivar con jerarquía de roles |
 | `GET/POST /api/rooms`, `PATCH /api/rooms/:id` | Consulta, alta, nombre y habilitación |
 | `GET/POST /api/reservations`, `PUT /api/reservations/:id` | Consulta, alta y reemplazo validado |
+| `POST /api/reservations/:id/extend` | Agregar noches con una tarifa propia, previa comprobación de fechas y disponibilidad |
 | `GET /api/reservations/breakfast?day=AAAA-MM-DD` | Personas con desayuno para la fecha de servicio, con su habitación y estado |
 | `GET/POST /api/platforms`, `PATCH /api/platforms/:id` | Canales e inhabilitación |
 | `GET/POST /api/notes`, `PATCH /api/notes/:id` | Novedades y resolución |

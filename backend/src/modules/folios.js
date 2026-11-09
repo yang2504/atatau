@@ -8,7 +8,7 @@ import {
   integer,
   text,
 } from "../core/validation.js";
-import { lodgingShare, MAX_NIGHTLY_CENTS } from "./lodging.js";
+import { lodgingShare, MAX_NIGHTLY_CENTS, nightDates, nightRates } from "./lodging.js";
 import { paymentMethods, cardSurcharge } from "../core/charges.js";
 import { canSeeSuperadmin } from "./users.js";
 
@@ -45,28 +45,24 @@ function entries(db, folio, full = 0) {
     FROM folio_services s JOIN users u ON u.id=s.user_id WHERE s.folio_id=?`,
     )
     .all(full, folio.id);
-  if (folio.nightly_cents !== null) {
+  const overrides = nightRates(db, folio.reservation_id);
+  for (const day of nightDates(folio.check_in, folio.check_out)) {
+    const nightlyCents = overrides[day] ?? folio.nightly_cents;
+    if (nightlyCents === null) continue;
     const total = lodgingShare(
-      folio.nightly_cents,
+      nightlyCents,
       folio.pax,
       folio.guest_id === null ? null : folio.position,
     );
-    for (
-      let time = Date.parse(folio.check_in);
-      time < Date.parse(folio.check_out);
-      time += 86400000
-    ) {
-      const day = new Date(time).toISOString().slice(0, 10);
-      rows.push({
+    rows.push({
         service_id: null,
         lodging_day: day,
         day,
         service: "Hospedaje",
-        detail: "1 noche",
+        detail: overrides[day] === undefined ? "1 noche" : "Noche de extensión",
         total_cents: total,
         author: null,
-      });
-    }
+    });
   }
   const payments = db
     .prepare(

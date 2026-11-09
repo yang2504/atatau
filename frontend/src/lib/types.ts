@@ -43,6 +43,7 @@ export type Reservation = {
   nightly_cents: number | null;
   arrival_time: string;
   paid_nights: string[];
+  night_rates: Record<string, number>;
   unit_ids: number[];
   guests: { id: number; name: string }[];
 };
