@@ -34,7 +34,8 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
     }
     const db = openDatabase(path);
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 4);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 5);
+      assert.equal(db.prepare("SELECT active FROM units WHERE id=1").get().active, 1);
       assert.equal(db.prepare("SELECT checked_in_by FROM reservations WHERE id=1").get().checked_in_by, null);
       assert.equal(db.prepare("PRAGMA foreign_keys").get().foreign_keys, 1);
       assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
@@ -69,6 +70,8 @@ test("la migración 003 completa ambas variantes instaladas de la versión 002",
               VALUES(1,'Demo','demo','unused','admin');
             INSERT INTO notes(id,body,category,created_by)
               VALUES(1,'Mensaje anterior','handover',1);
+            INSERT INTO cash_entries(day,kind,detail,base_cents,method,user_id)
+              VALUES('2026-11-01','expense','Gasto anterior',1000,'Efectivo',1);
             PRAGMA user_version = 2;
           `);
           if (hasReplies) {
@@ -80,7 +83,8 @@ test("la migración 003 completa ambas variantes instaladas de la versión 002",
         }
         const db = openDatabase(path);
         try {
-          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 4);
+          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 5);
+          assert.equal(db.prepare("SELECT cash_box FROM cash_entries").get().cash_box, "petty");
           const notes = db.prepare("SELECT body,reply_to FROM notes ORDER BY id").all();
           assert.equal(notes[0].body, "Mensaje anterior");
           assert.equal(notes[0].reply_to, null);

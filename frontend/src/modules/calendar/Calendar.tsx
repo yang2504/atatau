@@ -161,14 +161,14 @@ export function Calendar({
                     </div>
                     {days.map((day, index) => {
                       const free = room.units.filter(
-                        (unit) => !occupiedByDay[index].has(unit.id),
+                        (unit) => unit.active && !occupiedByDay[index].has(unit.id),
                       ).length;
                       const label =
                         room.type === "private"
                           ? free
                             ? "Libre"
                             : "Ocupada"
-                          : `${free} de ${room.units.length} camas libres`;
+                          : `${free} de ${room.capacity} camas libres`;
                       return (
                         <span
                           key={day}
@@ -181,19 +181,20 @@ export function Calendar({
                           <span aria-hidden="true">
                             {room.type === "private"
                               ? label
-                              : `${free}/${room.units.length}`}
+                              : `${free}/${room.capacity}`}
                           </span>
                         </span>
                       );
                     })}
                   </div>
-                  {room.units.map((unit) => (
+                  {room.units.filter((unit) => unit.active || occupiedByDay.some((day) => day.has(unit.id))).map((unit) => (
                     <div className="calendar-row" key={unit.id}>
                       <div className="resource-name">
                         <span className={`unit-dot ${room.type}`} />
                         {room.type === "private"
                           ? "Habitación completa"
                           : unit.label}
+                        {!unit.active && " · retirada"}
                       </div>
                       {days.map((day, index) => {
                         const selected =
@@ -211,6 +212,7 @@ export function Calendar({
                             key={day}
                             style={{ gridColumn: index + 2, gridRow: 1 }}
                             className={`calendar-cell ${day === today() ? "is-today" : ""} ${selected ? "selected" : ""}`}
+                            disabled={!unit.active}
                             tabIndex={occupiedByDay[index].has(unit.id) ? -1 : 0}
                             aria-label={`${room.name}, ${unit.label}, ${day}: seleccionar fecha`}
                             onPointerDown={(e) => {
@@ -295,7 +297,7 @@ export function Calendar({
                             .join(", ");
                           return (
                             <button
-                              draggable
+                              draggable={!!unit.active}
                               key={r.id}
                               className={`reservation-block ${r.status}`}
                               style={{

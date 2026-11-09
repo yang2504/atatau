@@ -2,13 +2,17 @@ import { Router } from "express";
 import { localDay, paymentMethods, cardSurcharge } from "../core/charges.js";
 import { transaction } from "../core/database.js";
 import { audit, choice, fail, integer, text } from "../core/validation.js";
+import { canSeeSuperadmin } from "./users.js";
 
 export function popModule(db, admin) {
   const router = Router();
   const find = db.prepare("SELECT * FROM pop_products WHERE id=?");
   router.get("/", (req, res) => res.json(db.prepare("SELECT * FROM pop_products ORDER BY name").all()));
-  router.get("/movements", (req, res) => res.json(db.prepare(`SELECT m.*,u.name AS author
-    FROM pop_movements m JOIN users u ON u.id=m.user_id ORDER BY m.id DESC LIMIT 100`).all()));
+  router.get("/movements", (req, res) => res.json(db.prepare(`
+    SELECT m.id,m.product_id,m.day,m.kind,m.quantity,m.detail,m.base_cents,m.surcharge_cents,m.method,
+      CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
+    FROM pop_movements m JOIN users u ON u.id=m.user_id ORDER BY m.id DESC LIMIT 100
+  `).all(canSeeSuperadmin(req.user))));
   function save(req, res) {
     const id = req.params.id ? integer(Number(req.params.id), "Producto") : null;
     const name = text(req.body.name, "Producto", 100);

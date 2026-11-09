@@ -435,7 +435,7 @@ test("reservas, permisos y persistencia transaccional", async () => {
       && row.surcharge_cents === 250 && row.cash_cents === 5000));
     assert.ok(historic.some((row) => row.source === "folio" && row.id === remainder.body.id && row.voided === 1));
 
-    const product = await request("/pop", { name: "Powerade", price_cents: 1500 });
+    const product = await request("/pub", { name: "Powerade", price_cents: 1500 });
     assert.equal(product.status, 201);
     const movements = `/pop/${product.body.id}/movements`;
     const arrival = { kind: "in", quantity: 2, detail: "Reposición" };
@@ -447,10 +447,54 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal((await request(movements, sale, "POST", receptionLogin.cookie)).status, 409);
     assert.equal((await request("/pop")).body[0].stock, 0);
     const daily = (await request("/cash/daily", undefined, "GET", receptionLogin.cookie)).body;
-    assert.ok(daily.some((row) => row.source === "pop" && row.surcharge_cents === 150 && row.cash_cents === 3000));
+    const pubDaily = (await request("/cash/daily?box=pub", undefined, "GET", receptionLogin.cookie)).body;
+    assert.ok(pubDaily.some((row) => row.source === "pop" && row.surcharge_cents === 150 && row.cash_cents === 3000));
+    assert.ok(daily.every((row) => row.cash_box === "petty" && row.source !== "pop"));
     assert.ok(daily.some((row) => row.source === "manual" && row.id === manualCard.body.id
       && row.surcharge_cents === 50 && row.cash_cents === 1000));
     assert.ok(daily.every((row) => row.kind === "income"));
+    const pubExpense = await request("/cash", { ...expense, cash_box: "pub" });
+    assert.equal(pubExpense.status, 201);
+    assert.ok((await request(monthPath + "&box=pub")).body.some((row) => row.kind === "expense" && row.id === pubExpense.body.id));
+    assert.ok(!(await request(monthPath)).body.some((row) => row.source === "manual" && row.id === pubExpense.body.id));
+    assert.equal((await request("/cash/daily?box=otro")).status, 400);
+
+    const admin = await request("/users", {
+      name: "Administración", username: "admin-demo", password: "clave-segura-prueba", role: "admin",
+    });
+    assert.equal(admin.status, 201);
+    const adminLogin = await request("/auth/login", { username: "admin-demo", password: "clave-segura-prueba" });
+    const adminRequest = (path, body, method) => request(path, body, method, adminLogin.cookie);
+    assert.ok((await adminRequest("/users")).body.every((user) => user.role !== "superadmin"));
+    assert.equal((await adminRequest(`/users/${setup.body.id}`, { name: "Cambio" }, "PATCH")).status, 404);
+    assert.equal((await adminRequest("/users", { role: "superadmin" })).status, 403);
+    assert.ok((await adminRequest("/notes")).body.every((row) => row.id !== reply.body.id));
+    assert.equal((await adminRequest(`/notes/${reply.body.id}`, { resolved: 1 }, "PATCH")).status, 404);
+    assert.equal((await adminRequest("/notes", { body: "Prueba", category: "handover", reply_to: reply.body.id })).status, 404);
+    const hiddenAuthor = (await adminRequest("/cash/monthly?month=2026-11")).body
+      .find((row) => row.source === "folio" && row.id === qr.body.id);
+    assert.equal(hiddenAuthor.author, "Atatau");
+    assert.equal(hiddenAuthor.user_id, undefined);
+    const protectedReservation = (await adminRequest("/reservations")).body.find((row) => row.id === first.body.id);
+    assert.equal(protectedReservation.created_by, null);
+
+    const roomPath = `/rooms/${dorm.body.id}`;
+    const dormBed = rooms[1].units.at(-1).id;
+    const stay = {
+      ...draft, guest_name: "Prueba de capacidad", pax: 1, platform_id: 1,
+      status: "confirmed", unit_ids: [dormBed], check_in: "2099-11-01", check_out: "2099-11-02",
+    };
+    assert.equal((await request("/reservations", stay)).status, 201);
+    assert.equal((await adminRequest(roomPath, { capacity: 1, name: "Dormitorio actualizado" }, "PATCH")).status, 200);
+    const smaller = (await request("/rooms")).body.find((row) => row.id === dorm.body.id);
+    assert.equal(smaller.name, "Dormitorio actualizado");
+    assert.deepEqual(smaller.units.filter((u) => u.active).map((u) => u.id), [dormBed]);
+    assert.equal((await request("/reservations", { ...stay, unit_ids: [rooms[1].units[0].id] })).status, 400);
+    assert.equal((await adminRequest(roomPath, { capacity: 6 }, "PATCH")).status, 200);
+    const restored = (await request("/rooms")).body.find((row) => row.id === dorm.body.id);
+    assert.deepEqual(restored.units.filter((u) => u.active).map((u) => u.id), rooms[1].units.map((u) => u.id));
+    assert.equal((await request("/reservations", { ...stay, pax: 2, unit_ids: [rooms[0].units[0].id] })).status, 201);
+    assert.equal((await adminRequest(`/rooms/${room.body.id}`, { capacity: 1 }, "PATCH")).status, 409);
     assert.equal(
       (await request(`/users/${receptionist.body.id}`, { active: 0 }, "PATCH"))
         .status,

@@ -129,7 +129,7 @@ export function Settings({
                     {u.username} · {roleNames[u.role]}
                   </small>
                 </div>
-                {(user.role === "superadmin" || u.role === "receptionist") && (
+                {(user.role === "superadmin" || u.role === "receptionist" || u.id === user.id) && (
                   <div className="row-actions">
                     <button className="button secondary compact" disabled={busy} onClick={() => {
                       setError("");

@@ -3,6 +3,8 @@ import { Router } from "express";
 import { fail, text, choice, integer, audit } from "../core/validation.js";
 import { transaction } from "../core/database.js";
 
+export const canSeeSuperadmin = (user) => Number(user?.role === "superadmin");
+
 const safe = (user) => ({
   id: user.id,
   name: user.name,
@@ -137,8 +139,9 @@ export function userModule(db) {
   management.get("/", (req, res) =>
     res.json(
       db
-        .prepare("SELECT id,name,username,role,active,chat_color FROM users ORDER BY name")
-        .all(),
+        .prepare(`SELECT id,name,username,role,active,chat_color
+          FROM users WHERE role<>'superadmin' OR ? ORDER BY name`)
+        .all(canSeeSuperadmin(req.user)),
     ),
   );
   management.post("/", (req, res) => {
@@ -159,8 +162,9 @@ export function userModule(db) {
   management.patch("/:id", (req, res) => {
     const id = integer(Number(req.params.id), "Usuario");
     const user = db.prepare("SELECT * FROM users WHERE id=?").get(id);
-    if (!user) fail("Usuario inexistente.", 404);
-    if (req.user.role !== "superadmin" && user.role !== "receptionist")
+    if (!user || (user.role === "superadmin" && !canSeeSuperadmin(req.user)))
+      fail("Usuario inexistente.", 404);
+    if (req.user.role !== "superadmin" && user.role !== "receptionist" && user.id !== req.user.id)
       fail("Solo el superadministrador puede modificar este usuario.", 403);
     const active = req.body.active === undefined ? user.active : integer(req.body.active, "Estado", 0, 1);
     const name = req.body.name === undefined ? user.name : text(req.body.name, "Nombre", 100);

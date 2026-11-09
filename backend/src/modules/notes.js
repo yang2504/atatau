@@ -1,20 +1,26 @@
 import { Router } from "express";
 import { text, integer, choice, fail, audit } from "../core/validation.js";
 import { transaction } from "../core/database.js";
+import { canSeeSuperadmin } from "./users.js";
 export function noteModule(db) {
   const router = Router();
+  const findVisible = db.prepare(`SELECT n.id FROM notes n JOIN users u ON u.id=n.created_by
+    WHERE n.id=? AND (u.role<>'superadmin' OR ?)`);
   router.get("/", (req, res) =>
     res.json(
       db
         .prepare(
-          `SELECT n.*,u.name AS author,u.chat_color,r.name AS room_name,v.guest_name,
-          substr(parent.body,1,120) AS reply_preview, sender.name AS reply_author
+          `SELECT n.id,n.body,n.category,n.room_id,n.reservation_id,n.amount_cents,n.resolved,
+          n.created_by,n.created_at,u.name AS author,u.chat_color,r.name AS room_name,v.guest_name,
+          CASE WHEN sender.role<>'superadmin' OR $full THEN substr(parent.body,1,120) END AS reply_preview,
+          CASE WHEN sender.role<>'superadmin' OR $full THEN sender.name END AS reply_author
           FROM notes n JOIN users u ON u.id=n.created_by
           LEFT JOIN rooms r ON r.id=n.room_id LEFT JOIN reservations v ON v.id=n.reservation_id
           LEFT JOIN notes parent ON parent.id=n.reply_to LEFT JOIN users sender ON sender.id=parent.created_by
+          WHERE u.role<>'superadmin' OR $full
           ORDER BY n.resolved,n.id DESC`,
         )
-        .all(),
+        .all({ $full: canSeeSuperadmin(req.user) }),
     ),
   );
   router.post("/", (req, res) => {
@@ -35,7 +41,7 @@ export function noteModule(db) {
         ? null
         : integer(req.body.amount_cents, "Gasto", 0, 100000000);
     const reply = req.body.reply_to == null ? null : integer(req.body.reply_to, "Mensaje");
-    if (reply && !db.prepare("SELECT id FROM notes WHERE id=?").get(reply))
+    if (reply && !findVisible.get(reply, canSeeSuperadmin(req.user)))
       fail("El mensaje al que respondes no existe.", 404);
     if (room && !db.prepare("SELECT id FROM rooms WHERE id=?").get(room))
       fail("Habitación inexistente.");
@@ -61,7 +67,7 @@ export function noteModule(db) {
   router.patch("/:id", (req, res) => {
     const id = integer(Number(req.params.id), "Novedad"),
       resolved = integer(req.body.resolved, "Estado", 0, 1);
-    if (!db.prepare("SELECT id FROM notes WHERE id=?").get(id))
+    if (!findVisible.get(id, canSeeSuperadmin(req.user)))
       fail("Novedad inexistente.", 404);
     transaction(db, () => {
       db.prepare("UPDATE notes SET resolved=? WHERE id=?").run(resolved, id);

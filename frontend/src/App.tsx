@@ -34,7 +34,7 @@ const sections = [
     ["notes", "Novedades", "chat"],
     ["breakfast", "Desayunos", "coffee"],
     ["cash", "Caja", "cash"],
-    ["pop", "Inventario POP", "box"],
+    ["pop", "Inventario Pub", "box"],
   ] },
   { title: "Administración", pages: [
     ["settings", "Configuración", "settings"],
@@ -283,7 +283,7 @@ export default function App() {
     active = data.reservations.filter(
       (r) => r.status !== "cancelled" && r.check_in <= day && r.check_out > day,
     );
-  const units = data.rooms.filter((r) => r.active).flatMap((r) => r.units),
+  const units = data.rooms.filter((r) => r.active).flatMap((r) => r.units.filter((unit) => unit.active)),
     occupied = new Set(active.flatMap((r) => r.unit_ids));
   const capacity = data.rooms
     .filter((r) => r.active)

@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
-import type { Data, User } from "../../lib/types";
+import type { Data, Room, User } from "../../lib/types";
 import { api, today } from "../../lib/api";
-import { ErrorBox, Icon, Empty } from "../../components/UI";
+import { ErrorBox, Icon, Empty, Modal } from "../../components/UI";
 export function Rooms({
   data,
   user,
@@ -13,6 +13,8 @@ export function Rooms({
 }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<Room | null>(null);
+  const [editError, setEditError] = useState("");
   const canManage = user.role !== "receptionist";
   async function create(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -34,13 +36,32 @@ export function Rooms({
       setBusy(false);
     }
   }
-  async function toggle(id: number, name: string, active: number) {
+  async function toggle(id: number, active: number) {
     setError("");
     try {
-      await api(`/rooms/${id}`, { name, active }, "PATCH");
+      await api(`/rooms/${id}`, { active }, "PATCH");
       await onSaved();
     } catch (e) {
       setError((e as Error).message);
+    }
+  }
+  async function edit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editing) return;
+    const values = new FormData(event.currentTarget);
+    setBusy(true);
+    setEditError("");
+    try {
+      await api(`/rooms/${editing.id}`, {
+        name: values.get("name"),
+        capacity: Number(values.get("capacity")),
+      }, "PATCH");
+      await onSaved();
+      setEditing(null);
+    } catch (error) {
+      setEditError((error as Error).message);
+    } finally {
+      setBusy(false);
     }
   }
   return (
@@ -59,7 +80,7 @@ export function Rooms({
             const pax = assigned.reduce((sum, r) => sum + r.pax, 0),
               blocked = new Set(assigned.flatMap((r) => r.unit_ids));
             const free = room.units
-              .filter((u) => !blocked.has(u.id))
+              .filter((u) => u.active && !blocked.has(u.id))
               .reduce((sum, u) => sum + u.capacity, 0);
             return (
               <article
@@ -90,14 +111,14 @@ export function Rooms({
                       : "Inhabilitada"}
                   </span>
                   {canManage && (
-                    <button
-                      className="text-button"
-                      onClick={() =>
-                        void toggle(room.id, room.name, room.active ? 0 : 1)
-                      }
-                    >
-                      {room.active ? "Inhabilitar" : "Habilitar"}
-                    </button>
+                    <div className="row-actions">
+                      <button className="text-button" onClick={() => { setEditing(room); setEditError(""); }}>
+                        Editar
+                      </button>
+                      <button className="text-button" onClick={() => void toggle(room.id, room.active ? 0 : 1)}>
+                        {room.active ? "Inhabilitar" : "Habilitar"}
+                      </button>
+                    </div>
                   )}
                 </div>
                 {room.type === "private" && pax > 0 && (
@@ -156,6 +177,14 @@ export function Rooms({
           </form>
         </aside>
       )}
+      {editing && <Modal title="Editar habitación" onClose={() => { if (!busy) setEditing(null); }}>
+        <form className="form-stack" onSubmit={edit}>
+          <ErrorBox message={editError} />
+          <label>Nombre<input name="name" defaultValue={editing.name} maxLength={80} required autoFocus /></label>
+          <label>Capacidad total de personas<input name="capacity" type="number" min={1} max={30} defaultValue={editing.capacity} required /></label>
+          <button className="button primary" disabled={busy}>Guardar cambios</button>
+        </form>
+      </Modal>}
     </div>
   );
 }

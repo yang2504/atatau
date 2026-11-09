@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { transaction } from "../core/database.js";
 import { MAX_NIGHTLY_CENTS, paidNights } from "./lodging.js";
+import { localDay } from "../core/charges.js";
+import { canSeeSuperadmin } from "./users.js";
 import {
   text,
   integer,
@@ -10,16 +12,22 @@ import {
   audit,
 } from "../core/validation.js";
 
-export function listReservations(db) {
+export function listReservations(db, full = 1) {
   return db
     .prepare(
-      `SELECT r.*,p.name AS platform_name,u.name AS checked_in_by_name
+      `SELECT r.*,p.name AS platform_name,u.name AS checked_in_by_name,
+        creator.role AS creator_role,u.role AS check_in_role
         FROM reservations r JOIN platforms p ON p.id=r.platform_id
+        JOIN users creator ON creator.id=r.created_by
         LEFT JOIN users u ON u.id=r.checked_in_by ORDER BY r.check_in,r.id`,
     )
     .all()
-    .map((r) => ({
+    .map(({ creator_role, check_in_role, ...r }) => ({
       ...r,
+      created_by: !full && creator_role === "superadmin" ? null : r.created_by,
+      checked_in_by: !full && check_in_role === "superadmin" ? null : r.checked_in_by,
+      checked_in_by_name: !full && check_in_role === "superadmin" ? null : r.checked_in_by_name,
+      checked_in_at: !full && check_in_role === "superadmin" ? null : r.checked_in_at,
       paid_nights: paidNights(db, r.id, r.nightly_cents),
       unit_ids: db
         .prepare("SELECT unit_id FROM allocations WHERE reservation_id=?")
@@ -110,16 +118,21 @@ export function saveReservation(db, body, user, id = null) {
     const units = unitIds.map((id) =>
       db
         .prepare(
-          "SELECT u.*,r.type,r.active FROM units u JOIN rooms r ON r.id=u.room_id WHERE u.id=?",
+          "SELECT u.*,r.type,r.active AS room_active FROM units u JOIN rooms r ON r.id=u.room_id WHERE u.id=?",
         )
         .get(integer(id, "Cama")),
     );
-    if (units.some((u) => !u || !u.active))
-      fail("La habitación no está habilitada.");
+    const keepHistory = previous && start === previous.check_in && end === previous.check_out &&
+      (status === "cancelled" || (end <= localDay() && status === previous.status)) &&
+      db.prepare("SELECT unit_id FROM allocations WHERE reservation_id=?").all(id)
+        .filter((unit) => unitIds.includes(unit.unit_id)).length === unitIds.length &&
+      previous.pax === pax;
+    if (units.some((u) => !u || (!keepHistory && (!u.active || !u.room_active))))
+      fail("La habitación o la cama no está habilitada.");
     if (new Set(units.map((u) => u.room_id)).size !== 1)
       fail("Cada reserva debe asignarse a una habitación.");
     if (
-      units[0].type === "dorm" ? pax !== units.length : pax > units[0].capacity
+      units[0].type === "dorm" ? pax !== units.length : !keepHistory && pax > units[0].capacity
     )
       fail(
         "Asigna una cama por persona en dormitorios y respeta la capacidad de las privadas.",
@@ -230,7 +243,7 @@ export function saveReservation(db, body, user, id = null) {
 }
 export function reservationModule(db) {
   const router = Router();
-  router.get("/", (req, res) => res.json(listReservations(db)));
+  router.get("/", (req, res) => res.json(listReservations(db, canSeeSuperadmin(req.user))));
   router.get("/breakfast", (req, res) => {
     const day = date(req.query.day);
     // Breakfast is served the morning after each booked night, including checkout.

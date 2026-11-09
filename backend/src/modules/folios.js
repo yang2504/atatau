@@ -10,6 +10,7 @@ import {
 } from "../core/validation.js";
 import { lodgingShare, MAX_NIGHTLY_CENTS } from "./lodging.js";
 import { paymentMethods, cardSurcharge } from "../core/charges.js";
+import { canSeeSuperadmin } from "./users.js";
 
 const folioQuery = `SELECT f.*, r.guest_name,r.pax,r.check_in,r.check_out,r.status,
   r.folio_mode,r.nightly_cents,r.arrival_time,p.name AS platform_name,
@@ -23,14 +24,14 @@ function findFolio(db, id) {
   return folio;
 }
 
-function entries(db, folio) {
+function entries(db, folio, full = 0) {
   const rows = db
     .prepare(
       `SELECT s.id AS service_id, NULL AS lodging_day, s.day, s.service,
-    s.detail, s.total_cents, u.name AS author
+    s.detail, s.total_cents, CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
     FROM folio_services s JOIN users u ON u.id=s.user_id WHERE s.folio_id=?`,
     )
-    .all(folio.id);
+    .all(full, folio.id);
   if (folio.nightly_cents !== null) {
     const total = lodgingShare(
       folio.nightly_cents,
@@ -56,10 +57,12 @@ function entries(db, folio) {
   }
   const payments = db
     .prepare(
-      `SELECT p.*,u.name AS author FROM folio_payments p
+      `SELECT p.id,p.lodging_day,p.service_id,p.day,p.amount_cents,p.method,p.voided,p.surcharge_cents,
+        CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
+      FROM folio_payments p
     JOIN users u ON u.id=p.user_id WHERE p.folio_id=? ORDER BY p.id`,
     )
-    .all(folio.id);
+    .all(full, folio.id);
   return rows
     .sort((a, b) => a.day.localeCompare(b.day))
     .map((row) => {
@@ -87,7 +90,7 @@ export function folioModule(db) {
   );
   router.get("/:id", (req, res) => {
     const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
-    res.json({ ...folio, entries: entries(db, folio) });
+    res.json({ ...folio, entries: entries(db, folio, canSeeSuperadmin(req.user)) });
   });
   router.post("/:id/services", (req, res) => {
     const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));

@@ -24,7 +24,7 @@ export function Pop({ user }: { user: User }) {
   const base = (selected?.price_cents ?? 0) * quantity;
 
   async function load() {
-    const [items, history] = await Promise.all([api<Product[]>("/pop"), api<Movement[]>("/pop/movements")]);
+    const [items, history] = await Promise.all([api<Product[]>("/pub"), api<Movement[]>("/pub/movements")]);
     setProducts(items);
     setMovements(history);
     setSelected((current) => items.find((item) => item.id === current?.id) ?? null);
@@ -54,7 +54,7 @@ export function Pop({ user }: { user: User }) {
     const form = event.currentTarget;
     const values = new FormData(form);
     void perform(async () => {
-      await api(edit ? `/pop/${edit.id}` : "/pop", {
+      await api(edit ? `/pub/${edit.id}` : "/pub", {
         name: values.get("name"),
         price_cents: cents(String(values.get("price"))),
         active: values.has("active") ? 1 : 0,
@@ -71,7 +71,7 @@ export function Pop({ user }: { user: User }) {
     const form = event.currentTarget;
     const values = new FormData(form);
     void perform(async () => {
-      const result = await api<{ collected_cents: number }>(`/pop/${selected.id}/movements`, {
+      const result = await api<{ collected_cents: number }>(`/pub/${selected.id}/movements`, {
         kind, quantity, method, detail: values.get("detail"), base_cents: base,
       });
       form.reset();

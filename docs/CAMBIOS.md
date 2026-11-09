@@ -1,5 +1,13 @@
 # Cambios y decisiones importantes
 
+## 2026-11-09 — Jerarquía, habitaciones y cajas separadas
+
+- Las cuentas y novedades del superadministrador solo son visibles para ese rol. Las reservas y movimientos compartidos conservan sus efectos y protegen la identidad de quien actuó. Administración puede gestionar recepción y editar su propio perfil.
+- Se puede editar el nombre y la capacidad de las habitaciones. Al reducir un dormitorio se retiran camas sin compromisos actuales o futuros y se conservan las asignaciones históricas.
+- La migración 005 habilita el retiro de camas y asigna los movimientos manuales anteriores a Caja Chica. Los abonos de huéspedes van a Caja Chica y las ventas de Inventario Pub van a Caja Pub. El neto mensual descuenta los egresos de cada caja.
+- El ZIP actualiza la aplicación usando la base de la cuenta de Windows. El README explica cómo respaldar y actualizar en la PC de recepción.
+- Pasaron las pruebas HTTP, la revisión de tipos y la compilación. El ZIP se probó con una base ficticia de v1.0.1 y conservó el acceso y los movimientos al migrar.
+
 ## 2026-11-09 — Inicio del paquete de Windows
 
 - El ZIP usa separadores estándar para facilitar la extracción. El iniciador busca los archivos respecto de su propia ubicación y explica cómo extraer el paquete si faltan.

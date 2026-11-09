@@ -17,10 +17,12 @@ type Entry = {
   author: string;
   voided: number;
 };
-const sources = { manual: "Manual", folio: "Hoja de consumo", pop: "POP" };
+const sources = { manual: "Manual", folio: "Hoja de consumo", pop: "Venta Pub" };
 
 export function Cash({ user }: { user: User }) {
   const admin = user.role !== "receptionist";
+  const [box, setBox] = useState<"petty" | "pub">("petty");
+  const boxLabel = box === "pub" ? "Caja Pub" : "Caja Chica";
   const [view, setView] = useState("daily");
   const [month, setMonth] = useState(today().slice(0, 7));
   const [kind, setKind] = useState("income");
@@ -30,7 +32,7 @@ export function Cash({ user }: { user: User }) {
   const [version, setVersion] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const path = view === "monthly" ? `/cash/monthly?month=${month}` : "/cash/daily";
+  const path = view === "monthly" ? `/cash/monthly?month=${month}&box=${box}` : `/cash/daily?box=${box}`;
   useEffect(() => {
     let active = true;
     setEntries(null);
@@ -45,6 +47,12 @@ export function Cash({ user }: { user: User }) {
   const total = (kind: Entry["kind"]) => (entries ?? []).reduce(
     (sum, row) => row.kind === kind && !row.voided ? sum + row.cash_cents : sum, 0,
   );
+  function switchBox(next: typeof box) {
+    if (box === next) return;
+    setEntries(null);
+    setError("");
+    setBox(next);
+  }
 
   async function record(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -53,7 +61,7 @@ export function Cash({ user }: { user: User }) {
     setBusy(true);
     setError("");
     try {
-      await api("/cash", { day: values.get("day") ?? today(), detail: values.get("detail"), kind, method, base_cents: cents(amount) });
+      await api("/cash", { day: values.get("day") ?? today(), detail: values.get("detail"), kind, method, base_cents: cents(amount), cash_box: box });
       form.reset();
       setAmount("");
       setVersion((v) => v + 1);
@@ -79,6 +87,10 @@ export function Cash({ user }: { user: User }) {
   }
 
   return <div className="form-stack">
+    <div className="tabs" aria-label="Elegir caja" role="group">
+      <button className={box === "petty" ? "active" : ""} aria-pressed={box === "petty"} onClick={() => switchBox("petty")} disabled={busy}>Caja Chica</button>
+      <button className={box === "pub" ? "active" : ""} aria-pressed={box === "pub"} onClick={() => switchBox("pub")} disabled={busy}>Caja Pub</button>
+    </div>
     {admin && <div className="tabs">
       <button className={view === "daily" ? "active" : ""} onClick={() => { setView("daily"); setError(""); }}>Caja diaria</button>
       <button className={view === "monthly" ? "active" : ""} onClick={() => { setView("monthly"); setError(""); }}>Cuaderno mensual</button>
@@ -87,14 +99,14 @@ export function Cash({ user }: { user: User }) {
     <div className="content-columns operations-layout">
       <section className="panel">
         <div className="section-toolbar">
-          <h2>{view === "monthly" ? "Cuaderno mensual" : `Caja diaria · ${shortDate(today())}`}</h2>
+          <h2>{boxLabel} · {view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
           {view === "monthly" && <input type="month" aria-label="Mes del cuaderno" value={month} onChange={(e) => { if (e.target.value) setMonth(e.target.value); }} />}
         </div>
         <div className="ledger-totals">
           <span>Ingresos <strong>{entries ? money(total("income")) : "—"}</strong></span>
           {admin && <>
             <span>Egresos <strong>{entries ? money(total("expense")) : "—"}</strong></span>
-            <span>Neto <strong>{entries ? money(total("income") - total("expense")) : "—"}</strong></span>
+            <span>Neto de caja <strong>{entries ? money(total("income") - total("expense")) : "—"}</strong></span>
           </>}
         </div>
         {!entries && !error && <p className="quiet-state" role="status">Cargando movimientos…</p>}
@@ -117,8 +129,8 @@ export function Cash({ user }: { user: User }) {
         </div>}
       </section>
       <section className="panel side-form">
-        <h2>{admin ? "Nuevo movimiento" : "Registrar ingreso"}</h2>
-        <p className="muted">Los abonos de huéspedes y las ventas del POP aparecen aquí automáticamente.</p>
+        <h2>{admin ? "Nuevo movimiento" : "Registrar ingreso"} · {boxLabel}</h2>
+        <p className="muted">{box === "pub" ? "Las ventas de Inventario Pub entran aquí automáticamente." : "Los abonos de huéspedes entran aquí automáticamente."}</p>
         <form className="form-stack" onSubmit={record}>
           {admin && <><label>Fecha<input type="date" name="day" defaultValue={today()} required /></label>
           <label>Tipo<select value={kind} onChange={(e) => setKind(e.target.value)}>

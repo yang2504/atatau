@@ -2,6 +2,7 @@ import { Router } from "express";
 import { transaction } from "../core/database.js";
 import { text, integer, choice, fail, audit } from "../core/validation.js";
 import { MAX_NIGHTLY_CENTS } from "./lodging.js";
+import { localDay } from "../core/charges.js";
 
 export function listRooms(db) {
   return db
@@ -99,10 +100,12 @@ export function roomModule(db, admin) {
   });
   router.patch("/:id", admin, (req, res) => {
     const id = integer(Number(req.params.id), "Habitación");
-    if (!db.prepare("SELECT id FROM rooms WHERE id=?").get(id))
+    const room = db.prepare("SELECT * FROM rooms WHERE id=?").get(id);
+    if (!room)
       fail("Habitación inexistente.", 404);
-    const name = text(req.body.name, "Nombre", 80),
-      active = integer(req.body.active, "Estado", 0, 1);
+    const name = text(req.body.name ?? room.name, "Nombre", 80),
+      active = integer(req.body.active ?? room.active, "Estado", 0, 1),
+      capacity = integer(req.body.capacity ?? room.capacity, "Capacidad", 1, 30);
     if (db.prepare("SELECT id FROM rooms WHERE name=? AND id<>?").get(name, id))
       fail("Ya existe una habitación con ese nombre.", 409);
     if (
@@ -118,11 +121,34 @@ export function roomModule(db, admin) {
         409,
       );
     transaction(db, () => {
-      db.prepare("UPDATE rooms SET name=?,active=? WHERE id=?").run(
-        name,
-        active,
-        id,
-      );
+      const difference = capacity - room.capacity;
+      if (difference !== 0) {
+        const used = db.prepare(`SELECT DISTINCT a.unit_id,r.pax FROM allocations a
+          JOIN units u ON u.id=a.unit_id JOIN reservations r ON r.id=a.reservation_id
+          WHERE u.room_id=? AND r.status<>'cancelled' AND r.check_out>?`).all(id, localDay());
+        if (room.type === "private") {
+          if (used.some((row) => row.pax > capacity))
+            fail("La nueva capacidad es menor que la de una reserva actual o futura.", 409);
+          db.prepare("UPDATE units SET capacity=? WHERE room_id=?").run(capacity, id);
+        } else {
+          const units = db.prepare("SELECT id,active FROM units WHERE room_id=? ORDER BY id").all(id);
+          const setActive = db.prepare("UPDATE units SET active=? WHERE id=?");
+          if (difference < 0) {
+            const reserved = new Set(used.map((row) => row.unit_id));
+            const retire = units.filter((unit) => unit.active && !reserved.has(unit.id)).slice(difference);
+            if (retire.length !== -difference)
+              fail("No hay suficientes camas libres de reservas actuales o futuras para reducir la capacidad.", 409);
+            for (const unit of retire) setActive.run(0, unit.id);
+          } else {
+            const restored = units.filter((unit) => !unit.active).slice(0, difference);
+            for (const unit of restored) setActive.run(1, unit.id);
+            const create = db.prepare("INSERT INTO units(room_id,label,capacity) VALUES(?,?,1)");
+            for (let i = 1; i <= difference - restored.length; i++)
+              create.run(id, `Cama ${units.length + i}`);
+          }
+        }
+      }
+      db.prepare("UPDATE rooms SET name=?,active=?,capacity=? WHERE id=?").run(name, active, capacity, id);
       audit(db, req.user, "update", "room", id);
     });
     res.json({ ok: true });

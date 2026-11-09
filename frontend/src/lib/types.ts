@@ -11,6 +11,7 @@ export type Unit = {
   room_id: number;
   label: string;
   capacity: number;
+  active: number;
 };
 export type Room = {
   id: number;

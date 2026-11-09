@@ -60,7 +60,7 @@ export function createApp(db) {
   app.use("/api/notes", noteModule(db));
   app.use("/api/folios", folioModule(db));
   app.use("/api/cash", cashModule(db, users.admin));
-  app.use("/api/pop", popModule(db, users.admin));
+  app.use(["/api/pub", "/api/pop"], popModule(db, users.admin));
   app.use("/api", (req, res) =>
     res.status(404).json({ error: "Ruta inexistente." }),
   );

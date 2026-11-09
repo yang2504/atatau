@@ -10,7 +10,11 @@ Si aparece un mensaje de archivo faltante, haz clic derecho en el ZIP y elige **
 
 El paquete es para Windows 10/11 de 64 bits e incluye Node.js, SQLite, el servidor y la interfaz compilada. Usa el navegador instalado en la computadora. Una vez descargado y extraído, funciona sin internet, npm ni permisos de administrador.
 
-Los datos del paquete se guardan en `%LOCALAPPDATA%\HostelAtatau\data` para la cuenta de Windows que lo ejecuta. Puedes abrir esa ubicación con `Win+R`. Para actualizar, detén Atatau, respalda esa carpeta y extrae el nuevo ZIP en otra carpeta. Si ya tienes una base de la versión de desarrollo, detén las dos instancias y copia la carpeta `backend/data/` a `%LOCALAPPDATA%\HostelAtatau\data` antes del primer arranque del paquete. Si la carpeta de destino ya contiene datos, respáldala antes de sustituirla.
+Los datos del paquete se guardan en `%LOCALAPPDATA%\HostelAtatau\data` para la cuenta de Windows que lo ejecuta. Puedes abrir esa ubicación con `Win+R`.
+
+Para actualizar en la PC de recepción, cierra Atatau con `Ctrl+C` y copia la carpeta de datos como respaldo. Descarga el ZIP de la nueva versión, extráelo en una carpeta nueva y abre su `Iniciar-Atatau.cmd` desde la misma cuenta de Windows. El sistema abrirá la base existente y aplicará las migraciones. Verifica tu sesión y tus reservas antes de retirar el acceso directo anterior.
+
+Si vas a trasladar una base de desarrollo, detén las dos instancias y copia el contenido de `backend/data/` a `%LOCALAPPDATA%\HostelAtatau\data` antes del primer arranque del paquete. Respalda la carpeta de destino si ya contiene datos.
 
 ## Desarrollo desde el código fuente
 
@@ -42,7 +46,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 ## Qué funciona
 
 - Calendario de 7 o 14 días con encabezado fijo, iconos de personas y filas por cama. Permite seleccionar rangos, navegar por fechas, crear y editar reservas. Arrastrar una reserva de una cama o privada conserva el número de noches. Las reservas de varias camas se reubican desde su formulario.
-- Privadas completas y dormitorios con camas individuales. Alta de habitaciones y capacidad, habilitación/inhabilitación, ocupación referencial y disponibilidad del día.
+- Privadas completas y dormitorios con camas individuales. Administración puede editar el nombre y la capacidad desde **Habitaciones**, además de habilitar e inhabilitar.
 - El calendario indica las camas libres sobre el total de cada dormitorio para cada fecha. En privadas muestra si la habitación está libre u ocupada.
 - La barra superior permanece visible al desplazarse. **Buscar huésped** muestra resultados en vivo y abre reservas u hojas de consumo. Incluye acompañantes y búsquedas sin tildes. El menú lateral agrupa las pantallas por área.
 - Reservas con responsable, PAX, acompañantes opcionales, canal, fechas, notas y estado. Detección de cruces en backend dentro de una transacción.
@@ -55,8 +59,8 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - **Novedades** funciona como chat grupal con nombres, colores y respuestas. La conversación visible abarca ayer y hoy en hora de Bolivia. Los mensajes anteriores siguen guardados y los pendientes de otras fechas se pueden consultar y resolver desde el panel lateral.
 - Al pulsar **Registrar llegada**, la reserva guarda el usuario que recibió a los huéspedes y la fecha y hora del registro. Las llegadas anteriores a esta función quedan sin ese dato.
 - En **Reservas** se elige el plan con o sin desayuno para toda la estadía. **Desayunos** muestra por fecha las personas, su habitación y su reserva. Cuenta un desayuno por persona la mañana siguiente a cada noche, incluida la salida. Separa los pendientes de confirmación y omite las cancelaciones.
-- **Caja** muestra los ingresos del día y permite anotar ingresos manuales. El cuaderno mensual de administración reúne ingresos, egresos y neto. Los abonos de huéspedes y las ventas del POP aparecen automáticamente.
-- **Inventario POP** registra productos, entradas, bajas y ventas. Cada venta descuenta unidades y registra el ingreso en caja dentro de la misma transacción.
+- **Caja Chica** recibe los abonos de huéspedes y **Caja Pub** recibe las ventas del inventario. Elige una caja antes de anotar un movimiento manual. Administración tiene ingresos, egresos, neto e historial mensual separados por caja. Los movimientos manuales previos quedaron en Caja Chica.
+- **Inventario Pub** registra productos, entradas, bajas y ventas. Cada venta descuenta unidades y registra el ingreso en Caja Pub dentro de la misma transacción.
 - Registro técnico de cambios en `audit_log`, todavía sin visor en la interfaz.
 
 ## Reglas de operación
@@ -67,13 +71,13 @@ La estadía usa `[entrada, salida)`: entrada el 1 y salida el 5 equivale a cuatr
 
 Desde **Hojas de consumo**, abre una hoja, elige **Abonar** en la fila de la noche o servicio y registra importe, fecha y medio de pago. **A/C** suma los abonos activos del cargo. Administración puede anular un abono incorrecto desde su historial. Las noches con abonos vigentes deben conservarse en el rango y mantienen la tarifa acordada.
 
-Al cobrar con **tarjeta**, ingresa el importe base. El total a cobrar incluye el 5 % de comisión, redondeada al centavo por operación. Caja y el saldo del huésped registran el importe base. Esta regla también aplica a las ventas del POP y los ingresos manuales. Los cobros nuevos por QR se registran por el importe base. Los recargos históricos quedan visibles como referencia y separados del total de caja.
+Al cobrar con **tarjeta**, ingresa el importe base. El total a cobrar incluye el 5 % de comisión, redondeada al centavo por operación. Caja y el saldo del huésped registran el importe base. Esta regla también aplica a las ventas del Pub y los ingresos manuales. Los cobros nuevos por QR se registran por el importe base. Los recargos históricos quedan visibles como referencia y separados del total de caja.
 
 En el formulario de reserva elige **Confirmada** o **Pendiente**. Ambas apartan disponibilidad. Las operaciones de llegada, salida y cancelación están en **Acciones de la estadía**.
 
 El calendario muestra las fechas reservadas incluso después de registrar la salida, para conservar el historial. Si alguien sale antes, ajustar la fecha de salida al registrar ese cambio. Las reservas canceladas liberan disponibilidad, conservando sus huéspedes y hojas. Los contadores muestran PAX **asignados por fecha**, incluyendo reservas confirmadas; no sustituyen el estado de check-in.
 
-PAX y modalidad de cuenta quedan fijos tras crear una reserva para conservar las hojas. Por ahora, para corregirlos se debe cancelar la reserva y crear otra. No se ofrece cambio de capacidad/tipo de una habitación con historial: no borrar ni recrear camas por fuera de una migración. Se puede inhabilitar una habitación una vez cerradas, canceladas o reubicadas todas sus reservas confirmadas/en casa.
+PAX y modalidad de cuenta quedan fijos tras crear una reserva para conservar las hojas. Para corregirlos, cancela la reserva y crea otra. Al reducir la capacidad de un dormitorio solo se retiran camas sin reservas actuales o futuras y se conservan sus asignaciones históricas. Una privada puede reducirse hasta la capacidad que requieran sus reservas actuales y futuras. El tipo de habitación queda fijo. Para inhabilitar una habitación, cierra, cancela o reubica primero sus reservas activas.
 
 Las personas acompañantes sin nombre se guardan como `Acompañante 2`, etc. Falta acordar con el hostel los datos personales obligatorios y su edición posterior.
 
@@ -88,8 +92,10 @@ Las personas acompañantes sin nombre se guardan como `Acompañante 2`, etc. Fal
 | Crear/activar/desactivar administradores y superadministradores | No | No | Sí |
 | Ver ingresos del día y registrar ingresos manuales del día | Sí | Sí | Sí |
 | Ver cuaderno mensual, registrar egresos y anular movimientos manuales | No | Sí | Sí |
-| Consultar inventario POP y registrar ventas | Sí | Sí | Sí |
-| Editar catálogo POP y registrar entradas o bajas de stock | No | Sí | Sí |
+| Consultar Inventario Pub y registrar ventas | Sí | Sí | Sí |
+| Editar Inventario Pub y registrar entradas o bajas de stock | No | Sí | Sí |
+
+Solo el rol superadministrador ve las cuentas y novedades de ese nivel. Los demás roles ven los movimientos compartidos necesarios para operar, con la identidad del superadministrador protegida. Administración puede editar su propio perfil y gestionar las cuentas de recepción.
 
 Nadie puede desactivar su propio usuario. La gestión de roles existentes, recuperación/cambio de contraseñas y el visor de auditoría quedan pendientes de una próxima etapa.
 
@@ -99,7 +105,7 @@ La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el pa
 
 SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
-Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 001 agrega tarifas y movimientos. La 002 agrega reservas pendientes, perfiles, recargos, caja, inventario y tarifas por PAX. La 003 completa las respuestas en Novedades y la 004 agrega el registro de quién recibió a los huéspedes y cuándo.
+Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 005 asigna los movimientos manuales previos a Caja Chica y habilita la edición de capacidad preservando las camas existentes.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 

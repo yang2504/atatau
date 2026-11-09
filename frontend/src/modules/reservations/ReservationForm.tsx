@@ -174,7 +174,7 @@ export function ReservationForm({
               Una cama por persona · {units.length} seleccionada(s)
             </legend>
             <div className="bed-options">
-              {room.units.map((unit) => (
+              {room.units.filter((unit) => unit.active || units.includes(unit.id)).map((unit) => (
                 <label
                   key={unit.id}
                   className={`bed-option ${conflicting.has(unit.id) ? "unavailable" : ""}`}
@@ -191,6 +191,7 @@ export function ReservationForm({
                     }
                   />
                   {unit.label}
+                  {!unit.active && " · retirada"}
                   {conflicting.has(unit.id) && " · ocupada"}
                 </label>
               ))}
