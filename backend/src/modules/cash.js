@@ -10,7 +10,14 @@ const ledger = `WITH ledger AS (
   UNION ALL
   SELECT 'folio',p.id,p.day,'income','Hoja #' || f.id || ' · ' || f.title,
     p.amount_cents,p.surcharge_cents,p.method,p.user_id,p.voided,'petty'
-  FROM folio_payments p JOIN folios f ON f.id=p.folio_id WHERE p.day>=? AND p.day<?
+  FROM folio_payments p JOIN folios f ON f.id=p.folio_id
+  WHERE p.group_id IS NULL AND p.day>=? AND p.day<?
+  UNION ALL
+  SELECT 'stay',leader.id,leader.day,'income','Cobro de hospedaje · Reserva #' || f.reservation_id,
+    SUM(p.amount_cents),leader.surcharge_cents,leader.method,leader.user_id,leader.voided,'petty'
+  FROM folio_payments leader JOIN folio_payments p ON p.group_id=leader.id
+  JOIN folios f ON f.id=leader.folio_id WHERE leader.day>=? AND leader.day<?
+  GROUP BY leader.id
   UNION ALL
   SELECT 'pop',id,day,'income',detail,base_cents,surcharge_cents,method,user_id,0,'pub'
   FROM pop_movements WHERE kind='sale' AND day>=? AND day<?
@@ -29,7 +36,7 @@ export function cashModule(db, admin) {
   const router = Router();
   const list = db.prepare(ledger);
   function period(req, res, start, end, incomeOnly = false) {
-    const entries = list.all(start, end, start, end, start, end,
+    const entries = list.all(start, end, start, end, start, end, start, end,
       canSeeSuperadmin(req.user), cashBox(req.query.box));
     res.json(incomeOnly ? entries.filter((entry) => entry.kind === "income") : entries);
   }

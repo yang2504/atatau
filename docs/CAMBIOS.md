@@ -1,5 +1,12 @@
 # Cambios y decisiones importantes
 
+## 2026-11-09 — Cobro de estadía y corrección de abonos
+
+- Recepción puede confirmar una reserva pendiente y registrar llegada con el saldo completo del hospedaje. Si ya hubo adelantos, cobra el saldo restante. La llegada, el cobro y sus aplicaciones se guardan en la misma transacción.
+- La migración 006 agrupa las aplicaciones del cobro en un solo comprobante en las hojas y en un solo ingreso en Caja Chica. Las noches siguen mostrando su saldo y la comisión de tarjeta se calcula una vez por cobro.
+- El superadministrador puede editar abonos activos por importe, fecha y medio de pago. El registro reemplazado queda anulado en el historial. Al anular un cobro de estadía se revierten todas sus aplicaciones.
+- Pasaron las pruebas HTTP, la revisión de tipos y la compilación. El ZIP de Windows migró una base ficticia de v1.1.0 y conservó el acceso y el historial.
+
 ## 2026-11-09 — Jerarquía, habitaciones y cajas separadas
 
 - Las cuentas y novedades del superadministrador solo son visibles para ese rol. Las reservas y movimientos compartidos conservan sus efectos y protegen la identidad de quien actuó. Administración puede gestionar recepción y editar su propio perfil.

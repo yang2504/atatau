@@ -59,6 +59,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - **Novedades** funciona como chat grupal con nombres, colores y respuestas. La conversación visible abarca ayer y hoy en hora de Bolivia. Los mensajes anteriores siguen guardados y los pendientes de otras fechas se pueden consultar y resolver desde el panel lateral.
 - Al pulsar **Registrar llegada**, la reserva guarda el usuario que recibió a los huéspedes y la fecha y hora del registro. Las llegadas anteriores a esta función quedan sin ese dato.
 - En **Reservas** se elige el plan con o sin desayuno para toda la estadía. **Desayunos** muestra por fecha las personas, su habitación y su reserva. Cuenta un desayuno por persona la mañana siguiente a cada noche, incluida la salida. Separa los pendientes de confirmación y omite las cancelaciones.
+- Al registrar una llegada, puedes cobrar el saldo completo del hospedaje con un solo pago. En una reserva pendiente, **Confirmar y registrar llegada** permite hacerlo en el mismo paso. La hoja muestra un comprobante de estadía y Caja Chica recibe un solo movimiento. Las hojas individuales muestran cuánto les corresponde del mismo pago.
 - **Caja Chica** recibe los abonos de huéspedes y **Caja Pub** recibe las ventas del inventario. Elige una caja antes de anotar un movimiento manual. Administración tiene ingresos, egresos, neto e historial mensual separados por caja. Los movimientos manuales previos quedaron en Caja Chica.
 - **Inventario Pub** registra productos, entradas, bajas y ventas. Cada venta descuenta unidades y registra el ingreso en Caja Pub dentro de la misma transacción.
 - Registro técnico de cambios en `audit_log`, todavía sin visor en la interfaz.
@@ -72,6 +73,8 @@ La estadía usa `[entrada, salida)`: entrada el 1 y salida el 5 equivale a cuatr
 Desde **Hojas de consumo**, abre una hoja, elige **Abonar** en la fila de la noche o servicio y registra importe, fecha y medio de pago. **A/C** suma los abonos activos del cargo. Administración puede anular un abono incorrecto desde su historial. Las noches con abonos vigentes deben conservarse en el rango y mantienen la tarifa acordada.
 
 Al cobrar con **tarjeta**, ingresa el importe base. El total a cobrar incluye el 5 % de comisión, redondeada al centavo por operación. Caja y el saldo del huésped registran el importe base. Esta regla también aplica a las ventas del Pub y los ingresos manuales. Los cobros nuevos por QR se registran por el importe base. Los recargos históricos quedan visibles como referencia y separados del total de caja.
+
+En **Hojas de consumo**, el superadministrador puede editar el importe, la fecha y el medio de pago de un abono activo. Al editar, la versión anterior queda anulada y la corrección actualiza los saldos y Caja Chica. Administración y el superadministrador pueden anular abonos. Si se anula un cobro de estadía, se revierten todas sus aplicaciones a la vez.
 
 En el formulario de reserva elige **Confirmada** o **Pendiente**. Ambas apartan disponibilidad. Las operaciones de llegada, salida y cancelación están en **Acciones de la estadía**.
 
@@ -105,7 +108,7 @@ La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el pa
 
 SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
-Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 005 asigna los movimientos manuales previos a Caja Chica y habilita la edición de capacidad preservando las camas existentes.
+Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 006 habilita los cobros agrupados de estadía y conserva los abonos existentes.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 

@@ -36,6 +36,7 @@ export type Reservation = {
   breakfast: number;
   checked_in_by_name: string | null;
   checked_in_at: string | null;
+  lodging_paid_cents: number;
   folio_mode: "shared" | "individual";
   comments: string;
   nightly_cents: number | null;
@@ -85,6 +86,7 @@ export type Payment = {
   author: string;
   voided: number;
 };
+export type StayPayment = Payment & { folio_cents: number };
 export type FolioEntry = {
   service_id: number | null;
   lodging_day: string | null;
@@ -93,6 +95,7 @@ export type FolioEntry = {
   detail: string;
   total_cents: number;
   paid_cents: number;
+  stay_paid_cents: number;
   balance_cents: number;
   author: string | null;
   payments: Payment[];

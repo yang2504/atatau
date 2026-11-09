@@ -6,7 +6,7 @@ import { cents, money, paymentMethods } from "../../lib/money";
 import type { User } from "../../lib/types";
 
 type Entry = {
-  source: "manual" | "folio" | "pop";
+  source: "manual" | "folio" | "stay" | "pop";
   id: number;
   day: string;
   kind: "income" | "expense";
@@ -17,7 +17,7 @@ type Entry = {
   author: string;
   voided: number;
 };
-const sources = { manual: "Manual", folio: "Hoja de consumo", pop: "Venta Pub" };
+const sources = { manual: "Manual", folio: "Hoja de consumo", stay: "Cobro de estadía", pop: "Venta Pub" };
 
 export function Cash({ user }: { user: User }) {
   const admin = user.role !== "receptionist";

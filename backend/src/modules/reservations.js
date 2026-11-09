@@ -3,6 +3,7 @@ import { transaction } from "../core/database.js";
 import { MAX_NIGHTLY_CENTS, paidNights } from "./lodging.js";
 import { localDay } from "../core/charges.js";
 import { canSeeSuperadmin } from "./users.js";
+import { recordStayPayment } from "./folios.js";
 import {
   text,
   integer,
@@ -16,7 +17,10 @@ export function listReservations(db, full = 1) {
   return db
     .prepare(
       `SELECT r.*,p.name AS platform_name,u.name AS checked_in_by_name,
-        creator.role AS creator_role,u.role AS check_in_role
+        creator.role AS creator_role,u.role AS check_in_role,
+        (SELECT COALESCE(SUM(p.amount_cents),0) FROM folio_payments p
+          JOIN folios f ON f.id=p.folio_id WHERE f.reservation_id=r.id
+          AND p.lodging_day IS NOT NULL AND p.voided=0) AS lodging_paid_cents
         FROM reservations r JOIN platforms p ON p.id=r.platform_id
         JOIN users creator ON creator.id=r.created_by
         LEFT JOIN users u ON u.id=r.checked_in_by ORDER BY r.check_in,r.id`,
@@ -97,6 +101,10 @@ export function saveReservation(db, body, user, id = null) {
       ["pending", "confirmed", "in_house", "checked_out", "cancelled"],
       "Estado",
     );
+    const arrivalPayment = body.check_in_payment;
+    if (arrivalPayment != null && (status !== "in_house" ||
+        !["pending", "confirmed"].includes(previous?.status)))
+      fail("El cobro de la estadía solo se registra al confirmar la llegada.", 409);
     const breakfast = integer(body.breakfast ?? previous?.breakfast ?? 0, "Desayuno", 0, 1);
     const mode = choice(
       body.folio_mode,
@@ -237,6 +245,9 @@ export function saveReservation(db, body, user, id = null) {
       db.prepare("UPDATE reservations SET checked_in_by=?, checked_in_at=? WHERE id=?")
         .run(user.id, new Date().toISOString(), id);
       audit(db, user, "check_in", "reservation", id);
+    }
+    if (arrivalPayment != null) {
+      recordStayPayment(db, id, { ...arrivalPayment, day: localDay() }, user, true);
     }
     return { id };
   });

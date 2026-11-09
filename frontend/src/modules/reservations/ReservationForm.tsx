@@ -3,7 +3,8 @@ import type { Data, Draft, Reservation } from "../../lib/types";
 import { api, today, addDays, daysBetween, statusNames } from "../../lib/api";
 import { Modal, ErrorBox } from "../../components/UI";
 import { StayDates } from "./StayDates";
-import { cents, money } from "../../lib/money";
+import { cents, money, paymentMethods } from "../../lib/money";
+import { CardCharge } from "../../components/CardCharge";
 
 export function ReservationForm({
   data,
@@ -43,6 +44,8 @@ export function ReservationForm({
   const room = data.rooms.find((room) => room.id === roomId);
   const [platformId, setPlatformId] = useState(r?.platform_id ?? 1);
   const [breakfast, setBreakfast] = useState(r?.breakfast ?? 0);
+  const [collectOnArrival, setCollectOnArrival] = useState(false);
+  const [arrivalMethod, setArrivalMethod] = useState("Efectivo");
   const [rateOverride, setRateOverride] = useState<string | null>(
     r?.nightly_cents != null ? (r.nightly_cents / 100).toFixed(2) : null,
   );
@@ -54,6 +57,11 @@ export function ReservationForm({
     rateOverride ??
     (!r && suggested ? (suggested.nightly_cents / 100).toFixed(2) : "");
   const nights = end ? daysBetween(start, end) : 0;
+  const canArrive = r?.status === "confirmed" || r?.status === "pending";
+  const lodgingDue = /^\d{1,7}([.,]\d{1,2})?$/.test(rate)
+    ? Math.max(0, nights * cents(rate) - (r?.lodging_paid_cents ?? 0))
+    : 0;
+  const collect = collectOnArrival && lodgingDue > 0;
   const conflicting = new Set(
     data.reservations
       .filter(
@@ -94,6 +102,9 @@ export function ReservationForm({
           folio_mode: mode,
           unit_ids: units,
           comments: form.get("comments"),
+          check_in_payment: operation === "in_house" && collect
+            ? { method: arrivalMethod, amount_cents: lodgingDue }
+            : undefined,
         },
         r ? "PUT" : "POST",
       );
@@ -322,14 +333,34 @@ export function ReservationForm({
             maxLength={2000}
           />
         </label>
+        {canArrive && lodgingDue > 0 && (
+          <fieldset className="form-stack">
+            <legend>Cobro al llegar</legend>
+            <label className="bed-option">
+              <input type="checkbox" checked={collectOnArrival} onChange={(e) => setCollectOnArrival(e.target.checked)} />
+              Registrar el pago completo del hospedaje · {money(lodgingDue)}
+            </label>
+            {collect && <>
+              <label>Medio de pago al llegar
+                <select value={arrivalMethod} onChange={(e) => setArrivalMethod(e.target.value)}>
+                  {paymentMethods.map((method) => <option key={method}>{method}</option>)}
+                </select>
+              </label>
+              {arrivalMethod === "Tarjeta" && <CardCharge base={lodgingDue} />}
+            </>}
+          </fieldset>
+        )}
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={onClose}>
             Cerrar
           </button>
-          {r?.status === "confirmed" && <button className="button secondary" value="in_house" disabled={busy}>Registrar llegada</button>}
           <button disabled={busy || !room || !end || r?.status === "cancelled"} className="button primary">
             {busy ? "Guardando…" : r ? "Guardar cambios" : "Crear reserva"}
           </button>
+          {canArrive && <button className="button secondary" value="in_house" disabled={busy}>
+            {r?.status === "pending" ? "Confirmar y registrar llegada" : "Registrar llegada"}
+            {collect && " con pago"}
+          </button>}
         </div>
         {r && (
           <details>
