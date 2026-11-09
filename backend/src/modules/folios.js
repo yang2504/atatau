@@ -96,7 +96,18 @@ function entries(db, folio, full = 0) {
     });
 }
 
-export function recordStayPayment(db, reservationId, body, user, fullBalance = false) {
+export function ensureReservationFolios(db, reservationId, mode, sharedTitle) {
+  if (db.prepare("SELECT 1 FROM folios WHERE reservation_id=? LIMIT 1").get(reservationId)) return;
+  if (mode === "shared") {
+    db.prepare("INSERT INTO folios(reservation_id,guest_id,title) VALUES(?,NULL,?)")
+      .run(reservationId, sharedTitle);
+  } else {
+    db.prepare(`INSERT INTO folios(reservation_id,guest_id,title)
+      SELECT reservation_id,id,name FROM guests WHERE reservation_id=? ORDER BY id`).run(reservationId);
+  }
+}
+
+export function recordStayPayment(db, reservationId, body, user, expectedBalance = null) {
   const details = paymentDetails(body);
   const amount = integer(body.amount_cents, "Importe", 1, MAX_STAY_CENTS);
   const folios = db.prepare(`${folioQuery} WHERE f.reservation_id=? ORDER BY f.id`).all(reservationId);
@@ -105,7 +116,7 @@ export function recordStayPayment(db, reservationId, body, user, fullBalance = f
     .map((row) => ({ folioId: folio.id, row })));
   nights.sort((a, b) => a.row.day.localeCompare(b.row.day));
   const balance = nights.reduce((sum, { row }) => sum + row.balance_cents, 0);
-  if (fullBalance && amount !== balance)
+  if (expectedBalance !== null && expectedBalance !== balance)
     fail("El saldo del hospedaje cambió. Revisa la reserva antes de registrar el cobro.", 409);
   if (amount > balance) fail("El abono supera el saldo del hospedaje.", 409);
 
@@ -147,9 +158,27 @@ function activePayment(db, folioId, id, group) {
 
 export function folioModule(db) {
   const router = Router();
-  router.get("/", (req, res) =>
-    res.json(db.prepare(`${folioQuery} ORDER BY f.id DESC`).all()),
-  );
+  router.get("/", (req, res) => {
+    const rows = db.prepare(`
+      SELECT listed.*,room.name AS room_name,room.type AS room_type,
+        (SELECT json_group_array(DISTINCT substr(p.day,1,7)) FROM folio_payments p
+          JOIN folios sibling ON sibling.id=p.folio_id WHERE sibling.reservation_id=listed.reservation_id) AS paid_months
+      FROM (${folioQuery}) listed
+      LEFT JOIN rooms room ON room.id=(
+        SELECT u.room_id FROM allocations a JOIN units u ON u.id=a.unit_id
+        WHERE a.reservation_id=listed.reservation_id LIMIT 1
+      )
+      WHERE listed.status<>'pending' OR EXISTS (
+        SELECT 1 FROM folio_payments p JOIN folios sibling ON sibling.id=p.folio_id
+        WHERE sibling.reservation_id=listed.reservation_id
+      ) OR EXISTS (
+        SELECT 1 FROM folio_services s JOIN folios sibling ON sibling.id=s.folio_id
+        WHERE sibling.reservation_id=listed.reservation_id
+      )
+      ORDER BY listed.check_in DESC,listed.id DESC
+    `).all();
+    res.json(rows.map((row) => ({ ...row, paid_months: JSON.parse(row.paid_months) })));
+  });
   router.get("/:id", (req, res) => {
     const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
     const full = canSeeSuperadmin(req.user);

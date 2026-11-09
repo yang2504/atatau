@@ -46,6 +46,8 @@ export function ReservationForm({
   const [breakfast, setBreakfast] = useState(r?.breakfast ?? 0);
   const [collectOnArrival, setCollectOnArrival] = useState(false);
   const [arrivalMethod, setArrivalMethod] = useState("Efectivo");
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [advanceMethod, setAdvanceMethod] = useState("Efectivo");
   const [rateOverride, setRateOverride] = useState<string | null>(
     r?.nightly_cents != null ? (r.nightly_cents / 100).toFixed(2) : null,
   );
@@ -62,6 +64,7 @@ export function ReservationForm({
     ? Math.max(0, nights * cents(rate) - (r?.lodging_paid_cents ?? 0))
     : 0;
   const collect = collectOnArrival && lodgingDue > 0;
+  const advanceBase = /^\d{1,9}([.,]\d{1,2})?$/.test(advanceAmount) ? cents(advanceAmount) : 0;
   const conflicting = new Set(
     data.reservations
       .filter(
@@ -97,13 +100,18 @@ export function ReservationForm({
           nightly_cents:
             r?.nightly_cents === null && !rate ? undefined : cents(rate),
           arrival_time: form.get("arrival_time"),
-          status: operation || (status === "confirmed" && r && ["in_house", "checked_out", "cancelled"].includes(r.status) ? r.status : status),
+          status: operation === "advance" ? "pending" : operation ||
+            (status === "confirmed" && r && ["in_house", "checked_out", "cancelled"].includes(r.status) ? r.status : status),
           breakfast,
           folio_mode: mode,
+          folio_holder: mode === "shared" ? form.get("folio_holder") : undefined,
           unit_ids: units,
           comments: form.get("comments"),
           check_in_payment: operation === "in_house" && collect
             ? { method: arrivalMethod, amount_cents: lodgingDue }
+            : undefined,
+          advance_payment: operation === "advance"
+            ? { method: advanceMethod, amount_cents: advanceBase, expected_balance_cents: lodgingDue }
             : undefined,
         },
         r ? "PUT" : "POST",
@@ -314,10 +322,14 @@ export function ReservationForm({
             disabled={!!r}
             onChange={(e) => setMode(e.target.value as typeof mode)}
           >
-            <option value="shared">Cuenta conjunta del grupo</option>
+            <option value="shared">Una cuenta a nombre del encargado</option>
             <option value="individual">Una cuenta por persona</option>
           </select>
         </label>
+        {mode === "shared" && <label>
+          Encargado de la cuenta
+          <input name="folio_holder" maxLength={100} defaultValue={r?.folio_holder} placeholder="Si queda vacío, se usa el titular de la reserva" />
+        </label>}
         {r && (
           <p className="muted small">
             PAX y tipo de cuenta quedan fijos para conservar las hojas creadas.
@@ -362,6 +374,25 @@ export function ReservationForm({
             {collect && " con pago"}
           </button>}
         </div>
+        {r?.status === "pending" && lodgingDue > 0 && (
+          <details className="form-stack">
+            <summary>Registrar un adelanto sin confirmar la reserva</summary>
+            <div className="form-grid">
+              <label>Importe del adelanto (Bs)
+                <input inputMode="decimal" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value)} />
+              </label>
+              <label>Medio de pago del adelanto
+                <select value={advanceMethod} onChange={(e) => setAdvanceMethod(e.target.value)}>
+                  {paymentMethods.map((method) => <option key={method}>{method}</option>)}
+                </select>
+              </label>
+            </div>
+            {advanceMethod === "Tarjeta" && <CardCharge base={advanceBase} />}
+            <button className="button secondary" value="advance" disabled={busy || !advanceBase || advanceBase > lodgingDue}>
+              Registrar adelanto
+            </button>
+          </details>
+        )}
         {r && (
           <details>
             <summary>Acciones de la estadía</summary>

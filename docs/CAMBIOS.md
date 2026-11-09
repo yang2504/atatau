@@ -1,5 +1,12 @@
 # Cambios y decisiones importantes
 
+## 2026-11-09 — Hojas por mes, alojamiento y encargado
+
+- Las hojas se listan por mes de llegada o de abono en dos grupos, habitaciones privadas y dormitorios. Las reservas pendientes nuevas generan sus hojas cuando se confirman o cuando se registra un adelanto.
+- Los adelantos se registran en la reserva pendiente y se guardan junto con sus hojas en una transacción. El saldo esperado evita duplicarlos al repetir una solicitud.
+- La migración 007 agrega el nombre opcional del encargado de una cuenta conjunta. Se conservan las hojas individuales y el historial existente.
+- Pasaron las pruebas HTTP, la revisión de tipos y la compilación. Se verificó el ZIP con una copia ficticia de v1.2.0, incluido el inicio de sesión y la consulta del historial.
+
 ## 2026-11-09 — Cobro de estadía y corrección de abonos
 
 - Recepción puede confirmar una reserva pendiente y registrar llegada con el saldo completo del hospedaje. Si ya hubo adelantos, cobra el saldo restante. La llegada, el cobro y sus aplicaciones se guardan en la misma transacción.

@@ -60,6 +60,8 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - Al pulsar **Registrar llegada**, la reserva guarda el usuario que recibió a los huéspedes y la fecha y hora del registro. Las llegadas anteriores a esta función quedan sin ese dato.
 - En **Reservas** se elige el plan con o sin desayuno para toda la estadía. **Desayunos** muestra por fecha las personas, su habitación y su reserva. Cuenta un desayuno por persona la mañana siguiente a cada noche, incluida la salida. Separa los pendientes de confirmación y omite las cancelaciones.
 - Al registrar una llegada, puedes cobrar el saldo completo del hospedaje con un solo pago. En una reserva pendiente, **Confirmar y registrar llegada** permite hacerlo en el mismo paso. La hoja muestra un comprobante de estadía y Caja Chica recibe un solo movimiento. Las hojas individuales muestran cuánto les corresponde del mismo pago.
+- **Hojas de consumo** separa habitaciones privadas y dormitorios. Una hoja aparece en el mes de llegada cuando se confirma la reserva. Si se registra un adelanto en una reserva pendiente, sus hojas quedan disponibles en el mes de llegada y en el del abono. Los abonos posteriores también permiten encontrar la hoja en su mes.
+- En una reserva puedes elegir una hoja por huésped o una cuenta conjunta a nombre de la persona encargada. Si dejas el encargado vacío, se usa el titular de la reserva.
 - **Caja Chica** recibe los abonos de huéspedes y **Caja Pub** recibe las ventas del inventario. Elige una caja antes de anotar un movimiento manual. Administración tiene ingresos, egresos, neto e historial mensual separados por caja. Los movimientos manuales previos quedaron en Caja Chica.
 - **Inventario Pub** registra productos, entradas, bajas y ventas. Cada venta descuenta unidades y registra el ingreso en Caja Pub dentro de la misma transacción.
 - Registro técnico de cambios en `audit_log`, todavía sin visor en la interfaz.
@@ -108,7 +110,7 @@ La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el pa
 
 SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
-Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 006 habilita los cobros agrupados de estadía y conserva los abonos existentes.
+Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 007 agrega el encargado de la cuenta y conserva las hojas y los abonos existentes.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 

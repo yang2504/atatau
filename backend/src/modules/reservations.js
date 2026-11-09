@@ -3,7 +3,7 @@ import { transaction } from "../core/database.js";
 import { MAX_NIGHTLY_CENTS, paidNights } from "./lodging.js";
 import { localDay } from "../core/charges.js";
 import { canSeeSuperadmin } from "./users.js";
-import { recordStayPayment } from "./folios.js";
+import { ensureReservationFolios, recordStayPayment } from "./folios.js";
 import {
   text,
   integer,
@@ -105,12 +105,20 @@ export function saveReservation(db, body, user, id = null) {
     if (arrivalPayment != null && (status !== "in_house" ||
         !["pending", "confirmed"].includes(previous?.status)))
       fail("El cobro de la estadía solo se registra al confirmar la llegada.", 409);
+    const advance = body.advance_payment;
+    if (advance != null && (previous?.status !== "pending" || status !== "pending"))
+      fail("El adelanto se registra en una reserva pendiente.", 409);
     const breakfast = integer(body.breakfast ?? previous?.breakfast ?? 0, "Desayuno", 0, 1);
     const mode = choice(
       body.folio_mode,
       ["shared", "individual"],
       "Tipo de cuenta",
     );
+    const holderInput = body.folio_holder ?? previous?.folio_holder ?? "";
+    const holder = typeof holderInput === "string" && !holderInput.trim()
+      ? ""
+      : text(holderInput, "Encargado de la cuenta", 100);
+    const sharedTitle = holder || `Grupo de ${guestName}`;
     const comments =
       typeof body.comments === "string" ? body.comments.trim() : "";
     if (comments.length > 2000)
@@ -165,7 +173,7 @@ export function saveReservation(db, body, user, id = null) {
       id = Number(
         db
           .prepare(
-            "INSERT INTO reservations(guest_name,pax,check_in,check_out,platform_id,status,folio_mode,comments,created_by,nightly_cents,arrival_time,breakfast) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO reservations(guest_name,pax,check_in,check_out,platform_id,status,folio_mode,comments,created_by,nightly_cents,arrival_time,breakfast,folio_holder) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
           )
           .run(
             guestName,
@@ -180,14 +188,12 @@ export function saveReservation(db, body, user, id = null) {
             nightlyCents,
             arrivalTime,
             breakfast,
+            holder,
           ).lastInsertRowid,
       );
       const names = Array.isArray(body.guest_names) ? body.guest_names : [];
       const guestInsert = db.prepare(
         "INSERT INTO guests(reservation_id,name) VALUES(?,?)",
-      );
-      const folioInsert = db.prepare(
-        "INSERT INTO folios(reservation_id,guest_id,title) VALUES(?,?,?)",
       );
       for (let i = 0; i < pax; i++) {
         const name =
@@ -196,13 +202,11 @@ export function saveReservation(db, body, user, id = null) {
             : names[i]
               ? text(names[i], "Nombre del acompañante", 100)
               : `Acompañante ${i + 1}`;
-        const guestId = Number(guestInsert.run(id, name).lastInsertRowid);
-        if (mode === "individual") folioInsert.run(id, guestId, name);
+        guestInsert.run(id, name);
       }
-      if (mode === "shared") folioInsert.run(id, null, `Grupo de ${guestName}`);
     } else {
       db.prepare(
-        "UPDATE reservations SET guest_name=?,check_in=?,check_out=?,platform_id=?,status=?,comments=?,nightly_cents=?,arrival_time=?,breakfast=? WHERE id=?",
+        "UPDATE reservations SET guest_name=?,check_in=?,check_out=?,platform_id=?,status=?,comments=?,nightly_cents=?,arrival_time=?,breakfast=?,folio_holder=? WHERE id=?",
       ).run(
         guestName,
         start,
@@ -213,6 +217,7 @@ export function saveReservation(db, body, user, id = null) {
         nightlyCents,
         arrivalTime,
         breakfast,
+        holder,
         id,
       );
       const first = db
@@ -226,7 +231,7 @@ export function saveReservation(db, body, user, id = null) {
       );
       if (mode === "shared")
         db.prepare("UPDATE folios SET title=? WHERE reservation_id=?").run(
-          `Grupo de ${guestName}`,
+          sharedTitle,
           id,
         );
       else
@@ -240,6 +245,8 @@ export function saveReservation(db, body, user, id = null) {
       db.prepare(
         "INSERT INTO allocations(reservation_id,unit_id) VALUES(?,?)",
       ).run(id, unit.id);
+    if (["confirmed", "in_house", "checked_out"].includes(status) || advance != null)
+      ensureReservationFolios(db, id, mode, sharedTitle);
     audit(db, user, previous ? "update" : "create", "reservation", id);
     if (status === "in_house" && previous?.status !== "in_house" && !previous?.checked_in_by) {
       db.prepare("UPDATE reservations SET checked_in_by=?, checked_in_at=? WHERE id=?")
@@ -247,7 +254,11 @@ export function saveReservation(db, body, user, id = null) {
       audit(db, user, "check_in", "reservation", id);
     }
     if (arrivalPayment != null) {
-      recordStayPayment(db, id, { ...arrivalPayment, day: localDay() }, user, true);
+      recordStayPayment(db, id, { ...arrivalPayment, day: localDay() }, user, arrivalPayment.amount_cents);
+    }
+    if (advance != null) {
+      const expected = integer(advance.expected_balance_cents, "Saldo esperado", 1, Number.MAX_SAFE_INTEGER);
+      recordStayPayment(db, id, { ...advance, day: localDay() }, user, expected);
     }
     return { id };
   });

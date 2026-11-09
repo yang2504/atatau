@@ -34,7 +34,8 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
     }
     const db = openDatabase(path);
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 6);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 7);
+      assert.equal(db.prepare("SELECT folio_holder FROM reservations WHERE id=1").get().folio_holder, "");
       assert.equal(db.prepare("SELECT active FROM units WHERE id=1").get().active, 1);
       assert.equal(db.prepare("SELECT checked_in_by FROM reservations WHERE id=1").get().checked_in_by, null);
       assert.equal(db.prepare("PRAGMA foreign_keys").get().foreign_keys, 1);
@@ -84,7 +85,7 @@ test("la migración 003 completa ambas variantes instaladas de la versión 002",
         }
         const db = openDatabase(path);
         try {
-          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 6);
+          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 7);
           assert.equal(db.prepare("SELECT cash_box FROM cash_entries").get().cash_box, "petty");
           const notes = db.prepare("SELECT body,reply_to FROM notes ORDER BY id").all();
           assert.equal(notes[0].body, "Mensaje anterior");

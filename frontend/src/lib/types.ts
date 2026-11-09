@@ -38,6 +38,7 @@ export type Reservation = {
   checked_in_at: string | null;
   lodging_paid_cents: number;
   folio_mode: "shared" | "individual";
+  folio_holder: string;
   comments: string;
   nightly_cents: number | null;
   arrival_time: string;
@@ -76,6 +77,9 @@ export type Folio = {
   platform_name: string;
   nightly_cents: number | null;
   arrival_time: string;
+  room_name: string | null;
+  room_type: Room["type"] | null;
+  paid_months: string[];
 };
 export type Payment = {
   id: number;

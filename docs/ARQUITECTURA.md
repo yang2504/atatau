@@ -27,7 +27,7 @@ En desarrollo: frontend `127.0.0.1:5173` con proxy de `/api` hacia `127.0.0.1:30
 - `reservations`: responsable, PAX, fechas, plataforma, modalidad de hoja, estado y notas.
 - `allocations`: relación reserva/unidades para permitir varias camas en una reserva.
 - `guests`: personas de una reserva; responsable y acompañantes.
-- `folios`: una por grupo o una por persona, creadas durante el alta. El hospedaje se deriva de la tarifa por noche y el rango guardado en la reserva.
+- `folios`: una por grupo o una por persona. Se crean al confirmar la reserva o registrar su primer adelanto. La cuenta conjunta usa el encargado de la reserva cuando se indicó uno. El hospedaje se deriva de la tarifa por noche y del rango de la reserva.
 - `room_rates`: tarifa sugerida por habitación y canal. El canal directo funciona también como tarifa base. Cambiar una sugerencia no cambia las reservas existentes.
 - `folio_services` y `folio_payments`: cargos adicionales y abonos por servicio o fecha de hospedaje. Los abonos anulados conservan su historial y se excluyen de saldos.
 - `notes`: mensajes entre turnos con respuesta opcional a otro mensaje, referencias a habitación o reserva y gasto informativo.
@@ -60,7 +60,7 @@ Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "err
 | `GET/POST /api/notes`, `PATCH /api/notes/:id` | Novedades y resolución |
 | `PUT /api/rooms/:id/rates/:platformId` | Guardar o quitar tarifa sugerida, solo administración |
 | `PUT /api/rooms/:id/guest-rates` | Guardar o quitar una tarifa por PAX y desayuno, solo administración |
-| `GET /api/folios`, `GET /api/folios/:id` | Hojas y detalle de cargos y abonos |
+| `GET /api/folios`, `GET /api/folios/:id` | Hojas con tipo de alojamiento y meses de abono, y detalle de cargos y abonos |
 | `POST /api/folios/:id/services`, `POST /api/folios/:id/payments` | Registrar servicio o abono por cargo |
 | `POST /api/folios/:id/payments/:paymentId/void` | Anular abono, solo administración |
 | `GET /api/cash/daily`, `GET /api/cash/monthly?month=AAAA-MM` | Ingresos del día para recepción y cuaderno mensual de administración |
