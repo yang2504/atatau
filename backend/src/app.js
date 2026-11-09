@@ -8,6 +8,7 @@ import { noteModule } from "./modules/notes.js";
 import { folioModule } from "./modules/folios.js";
 import { cashModule } from "./modules/cash.js";
 import { popModule } from "./modules/pop.js";
+import { bcbRateHandler } from "./modules/bcb.js";
 
 export function createApp(db) {
   const app = express();
@@ -53,6 +54,7 @@ export function createApp(db) {
   const users = userModule(db);
   app.use("/api/auth", users.router);
   app.use("/api", users.requireUser);
+  app.get("/api/bcb/usd", bcbRateHandler(db));
   app.use("/api/users", users.management);
   app.use("/api/rooms", roomModule(db, users.admin));
   app.use("/api/reservations", reservationModule(db));

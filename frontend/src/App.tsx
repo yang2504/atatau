@@ -14,6 +14,7 @@ import { ErrorBox, Icon, Empty } from "./components/UI";
 import { Calendar } from "./modules/calendar/Calendar";
 import { ReservationForm } from "./modules/reservations/ReservationForm";
 import { ExtendStay } from "./modules/reservations/ExtendStay";
+import { DollarRate } from "./components/DollarRate";
 import { Rooms } from "./modules/rooms/Rooms";
 import { Notes } from "./modules/notes/Notes";
 import { Settings } from "./modules/settings/Settings";
@@ -381,6 +382,7 @@ export default function App() {
             onReservation={(reservation) => setEditor({ reservation })}
             onFolio={setSelectedFolio}
           />
+          <DollarRate />
           <div className="topbar-date">
             <Icon name="calendar" size={17} />
             {new Intl.DateTimeFormat("es-BO", {

@@ -1,5 +1,11 @@
 # Cambios y decisiones importantes
 
+## 2026-11-09 — Consulta del dólar oficial
+
+- **Dólar BCB** consulta el indicador oficial publicado por el Banco Central de Bolivia y muestra la vigencia y la hora de consulta. La migración 009 conserva la última cotización válida para cuando falte internet o la fuente no responda.
+- La consulta se hace bajo demanda con un tiempo de espera limitado. Tiene fines informativos y los cobros siguen en bolivianos.
+- Pasaron las pruebas de API, la revisión de tipos y la compilación. Se verificó el inicio de sesión, la migración de una copia ficticia de v1.4.0 y la consulta real al BCB desde el paquete de Windows. Queda pendiente la revisión visual en navegador.
+
 ## 2026-11-09 — Extender estadías con su propia tarifa
 
 - El calendario permite agregar noches al inicio o al final de una reserva activa. La extensión muestra la tarifa normal sugerida, el cargo adicional y el saldo. Las fechas originales conservan su tarifa y sus pagos.

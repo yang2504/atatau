@@ -81,6 +81,13 @@ export function openDatabase(
       db.exec("PRAGMA user_version = 8");
     });
   }
+  if (db.prepare("PRAGMA user_version").get().user_version < 9) {
+    transaction(db, () => {
+      if (db.prepare("PRAGMA user_version").get().user_version >= 9) return;
+      db.exec(readFileSync(new URL("./009-bcb-rate.sql", import.meta.url), "utf8"));
+      db.exec("PRAGMA user_version = 9");
+    });
+  }
   db.prepare(
     "INSERT OR IGNORE INTO platforms (id,name,active) VALUES (1,'Sin reserva / directo',1),(2,'Booking',1),(3,'Hostelworld',1)",
   ).run();

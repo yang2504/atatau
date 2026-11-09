@@ -19,7 +19,7 @@ Si vas a trasladar una base de desarrollo, detén las dos instancias y copia el 
 ## Desarrollo desde el código fuente
 
 - Node.js **22.14 o superior de la rama 22** (o una versión posterior compatible). Esta base usa `node:sqlite`; Node 22.14 lo incluye con aviso experimental. No hace falta instalar SQLite, PostgreSQL, Docker ni compiladores nativos.
-- Internet solo para descargar las dependencias durante la preparación del proyecto. La aplicación compilada funciona sin internet.
+- Internet se usa para descargar dependencias al preparar el proyecto y para consultar el dólar oficial cuando se pulsa **Dólar BCB**. El resto de la aplicación compilada funciona sin internet.
 
 Desde la carpeta raíz:
 
@@ -49,6 +49,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - Privadas completas y dormitorios con camas individuales. Administración puede editar el nombre y la capacidad desde **Habitaciones**, además de habilitar e inhabilitar.
 - El calendario indica las camas libres sobre el total de cada dormitorio para cada fecha. En privadas muestra si la habitación está libre u ocupada.
 - La barra superior permanece visible al desplazarse. **Buscar huésped** muestra resultados en vivo y abre reservas u hojas de consumo. Incluye acompañantes y búsquedas sin tildes. El menú lateral agrupa las pantallas por área.
+- **Dólar BCB** muestra el tipo de cambio oficial en bolivianos por dólar, su vigencia y la hora de consulta. Si falla la consulta, muestra el último dato guardado con un aviso. Es una consulta informativa y no interviene en los cobros.
 - Reservas con responsable, PAX, acompañantes opcionales, canal, fechas, notas y estado. Detección de cruces en backend dentro de una transacción.
 - El botón **+** de una reserva activa en el calendario abre **Alargar estadía**. Puedes agregar noches antes de la llegada o después de la salida. Las noches originales conservan su tarifa y sus abonos. Las adicionales usan la tarifa normal indicada al guardar. La sugerencia viene del talonario por PAX y desayuno o de la tarifa directa de la habitación.
 - Booking, Hostelworld y entrada directa disponibles. Agregar/inhabilitar plataformas conserva el historial. Son etiquetas de origen: **no hay sincronización con plataformas externas**.
@@ -111,7 +112,7 @@ La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el pa
 
 SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
-Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 008 permite guardar tarifas para las noches adicionales y conserva las tarifas y los abonos existentes.
+Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 009 agrega el almacenamiento de la última cotización consultada del BCB.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 
