@@ -1,5 +1,9 @@
 # Cambios y decisiones importantes
 
+## 2026-11-09 — Inicio del paquete de Windows
+
+- El ZIP usa separadores estándar para facilitar la extracción. El iniciador busca los archivos respecto de su propia ubicación y explica cómo extraer el paquete si faltan.
+
 ## 2026-11-09 — Paquete portátil para Windows
 
 - Se añadió un ZIP para Windows x64 con Node.js, SQLite integrado, dependencias de producción y la interfaz compilada. `Iniciar-Atatau.cmd` abre la aplicación local y guarda los datos en la carpeta de la cuenta de Windows.

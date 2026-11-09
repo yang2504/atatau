@@ -6,6 +6,8 @@ Sistema web local para recepción. **Primera base funcional**, con React + TypeS
 
 Descarga el ZIP de Windows x64 desde [Releases](https://github.com/yang2504/atatau/releases/latest). Extrae toda la carpeta y abre **Iniciar-Atatau.cmd**. Se abrirá [Hostel Atatau](http://127.0.0.1:3001) en el navegador. Deja la ventana de la aplicación abierta mientras trabajas. Para detenerla, pulsa `Ctrl+C` en esa ventana.
 
+Si aparece un mensaje de archivo faltante, haz clic derecho en el ZIP y elige **Extraer todo**. Abre el archivo de inicio desde la carpeta extraída, al lado de `runtime`, `backend` y `frontend`.
+
 El paquete es para Windows 10/11 de 64 bits e incluye Node.js, SQLite, el servidor y la interfaz compilada. Usa el navegador instalado en la computadora. Una vez descargado y extraído, funciona sin internet, npm ni permisos de administrador.
 
 Los datos del paquete se guardan en `%LOCALAPPDATA%\HostelAtatau\data` para la cuenta de Windows que lo ejecuta. Puedes abrir esa ubicación con `Win+R`. Para actualizar, detén Atatau, respalda esa carpeta y extrae el nuevo ZIP en otra carpeta. Si ya tienes una base de la versión de desarrollo, detén las dos instancias y copia la carpeta `backend/data/` a `%LOCALAPPDATA%\HostelAtatau\data` antes del primer arranque del paquete. Si la carpeta de destino ya contiene datos, respáldala antes de sustituirla.

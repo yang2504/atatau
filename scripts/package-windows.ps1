@@ -23,12 +23,19 @@ try {
     Copy-Item -LiteralPath docs -Destination $stage -Recurse
     Copy-Item -LiteralPath backend/package.json, backend/src -Destination "$stage/backend" -Recurse
     Copy-Item -LiteralPath frontend/package.json, frontend/dist -Destination "$stage/frontend" -Recurse
-    Copy-Item -LiteralPath scripts/windows/Iniciar-Atatau.cmd -Destination $stage
+    Get-Content -LiteralPath scripts/windows/Iniciar-Atatau.cmd |
+        Set-Content -LiteralPath "$stage/Iniciar-Atatau.cmd" -Encoding Ascii
     Push-Location $stage
     try {
         npm ci --omit=dev --workspace backend --include-workspace-root=false
         if ($LASTEXITCODE -ne 0) { throw 'Falló la instalación de dependencias del paquete.' }
     } finally { Pop-Location }
+    # Node resolves the app from backend/src. The npm workspace junction is unnecessary.
+    $workspaceLink = Get-Item -LiteralPath "$stage/node_modules/@atatau/backend" -ErrorAction SilentlyContinue
+    if ($workspaceLink) {
+        if (!$workspaceLink.LinkType) { throw 'Se esperaba un enlace de npm para el backend.' }
+        $workspaceLink.Delete()
+    }
 
     $download = Join-Path $temp $nodeArchive
     Invoke-WebRequest -UseBasicParsing -Uri "$nodeDist/$nodeArchive" -OutFile $download
@@ -40,7 +47,9 @@ try {
     Expand-Archive -LiteralPath $download -DestinationPath $temp
     $nodeFolder = Join-Path $temp "node-$nodeVersion-win-x64"
     Copy-Item -LiteralPath "$nodeFolder/node.exe", "$nodeFolder/LICENSE" -Destination "$stage/runtime"
-    Compress-Archive -LiteralPath $stage -DestinationPath $outputPath
+    # Write standard ZIP paths with forward slashes for Windows Explorer.
+    tar.exe -a -cf $outputPath -C $temp 'Hostel-Atatau'
+    if ($LASTEXITCODE -ne 0) { throw 'Falló la creación del ZIP.' }
     Get-Item -LiteralPath $outputPath
 } finally {
     Pop-Location
