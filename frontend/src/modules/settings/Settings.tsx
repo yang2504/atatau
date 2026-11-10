@@ -54,6 +54,13 @@ export function Settings({
       form.reset();
     });
   }
+  function saveExchangeRate(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const value = String(new FormData(e.currentTarget).get("exchange_rate"));
+    const [whole, fraction = ""] = value.split(/[.,]/);
+    const scaled_rate = Number(whole) * 10_000 + Number(fraction.padEnd(4, "0"));
+    void perform(() => api("/lodging-exchange-rate", { scaled_rate }, "PUT"));
+  }
   function editProfile(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!profile) return;
@@ -200,6 +207,19 @@ export function Settings({
             <button disabled={busy} className="button primary">
               Crear usuario
             </button>
+          </form>
+        </section>
+        <section className="panel settings-panel">
+          <h2>Tipo de cambio para hospedaje</h2>
+          <p className="muted">Las tarifas en USD se convierten con el tipo de cambio oficial del BCB. Configura un respaldo para cuando falte una cotización vigente.</p>
+          <form className="form-stack" onSubmit={saveExchangeRate}>
+            <label>Bolivianos por USD de respaldo
+              <input name="exchange_rate" inputMode="decimal" required
+                pattern="[0-9]{1,4}([.,][0-9]{1,4})?"
+                key={data.lodgingExchangeRate}
+                defaultValue={data.lodgingExchangeRate === null ? "" : data.lodgingExchangeRate / 10_000} />
+            </label>
+            <button className="button primary" disabled={busy}>Guardar tipo de cambio de respaldo</button>
           </form>
         </section>
         <RoomRates data={data} onSaved={onSaved} />

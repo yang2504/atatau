@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from "react";
+import { UsdConversion } from "../../components/UsdConversion";
 import type { Data, Draft, Reservation } from "../../lib/types";
 import { api, today, addDays, daysBetween, statusNames } from "../../lib/api";
 import { Modal, ErrorBox } from "../../components/UI";
 import { StayDates } from "./StayDates";
+import { ReservationStaff } from "./ReservationStaff";
 import { cents, money, paymentMethods } from "../../lib/money";
 import { CardCharge } from "../../components/CardCharge";
 import { lodgingTotal, normalRoomRate } from "../../lib/lodging";
@@ -278,9 +280,7 @@ export function ReservationForm({
         {breakfast === 1 && nights > 0 && <p className="form-note">
           {pax * nights} desayunos en total · {pax} por mañana, del {addDays(start, 1)} al {end}.
         </p>}
-        {r?.checked_in_at && <p className="form-note">
-          Recibió a los huéspedes <strong>{r.checked_in_by_name}</strong> · {new Date(r.checked_in_at).toLocaleString("es-BO", { timeZone: "America/La_Paz" })}
-        </p>}
+        {r && <ReservationStaff reservation={r} />}
         <div className="form-grid">
           <label>
             Tarifa {r && Object.keys(r.night_rates).length > 0 ? "original " : ""}por noche para {pax} {pax === 1 ? "persona" : "personas"}{" "}
@@ -303,6 +303,7 @@ export function ReservationForm({
             />
           </label>
         </div>
+        <UsdConversion onApply={setRateOverride} />
         {(priced || total > 0) && nights > 0 && (
           <p className="form-note">
             Hospedaje total · {nights} {nights === 1 ? "noche" : "noches"} ·{" "}

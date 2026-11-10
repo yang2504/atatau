@@ -1,5 +1,26 @@
 # Cambios y decisiones importantes
 
+## 2026-11-10 — Responsables de estadía y mejoras visuales
+
+- El calendario muestra iniciales de la etapa actual. La reserva y la hoja muestran por separado a quien creó la reserva, registró la entrada y registró la salida. Se reutiliza la auditoría para las salidas y los nombres históricos, con la identidad del superadministrador protegida según el rol.
+- Las hojas destacan el saldo y distinguen el registro del consumo y sus abonos. La ventana del dólar separa cotización, vigencia y fecha de consulta.
+- La versión 1.6.0 incluye los cambios de esta fecha. Antes de actualizar desde 1.5.0, respaldar la carpeta de datos. Las salidas previas a la auditoría pueden quedar sin responsable.
+- Pasaron `npm test`, `npm run check` y `npm run build`. El ZIP arrancó con una base ficticia de 1.5.0 y conservó sus reservas y hojas. En Chrome se comprobaron las tres etapas con usuarios distintos, el saldo tras un abono parcial y la consulta al BCB.
+
+## 2026-11-10 — Conversión de tarifas con el dólar oficial del BCB
+
+- Al activar la conversión de USD a Bs se reutiliza la consulta de **Dólar BCB**. Si falla la actualización, el dato oficial guardado se usa mientras esté vigente en hora de Bolivia. Cuando falta un dato vigente, se muestra y aplica el respaldo administrativo si existe.
+- Se verificaron la vigencia, el caché, el respaldo y el caso sin cotización en las pruebas de API. Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome se probaron el cálculo con una respuesta del BCB simulada, el guardado de la tarifa de una reserva y el aviso al pasar al respaldo. Se reutiliza el esquema existente.
+
+## 2026-11-10 — Turnos, conversión de tarifas, consumos y auditoría
+
+- Cada sesión abre un turno con Bs 0. La migración 010 relaciona movimientos manuales, cobros de huéspedes y ventas Pub con su turno. Recepción ve sus turnos y administración puede consultar los del equipo. Las anulaciones conservan el movimiento original y su auditoría.
+- Administración fija el tipo de cambio de hospedaje. La conversión muestra el resultado y permite cargarlo en la tarifa de la reserva, extensión o talonario, con redondeo al centavo.
+- Las hojas se filtran por habitación, nombre o número de reserva y mes de estadía, servicio o abono. El subrayado rojo indica saldo pendiente y se actualiza con los abonos.
+- El visor administrativo registra reservas, llegadas, salidas, traslados, cancelaciones, hojas y caja con usuario, hora y valores anteriores y nuevos. Las operaciones nuevas guardan su auditoría dentro de la misma transacción.
+- Se comprobaron migraciones, permisos, separación de turnos, cobros agrupados, historial de reservas y cambios de saldo con pruebas HTTP. Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome, con una base temporal, se verificaron el cambio de USD 20 a Bs 140, los filtros, el subrayado antes y después del pago, la vista de auditoría y el inicio de otro usuario con saldo cero.
+- Antes de aplicar la migración en recepción, detener la aplicación y respaldar la carpeta de datos completa. Los movimientos anteriores siguen en el cuaderno por fecha y la auditoría antigua conserva los datos disponibles. Queda pendiente el conteo físico para arqueo.
+
 ## 2026-11-09 — Consulta del dólar oficial
 
 - **Dólar BCB** consulta el indicador oficial publicado por el Banco Central de Bolivia y muestra la vigencia y la hora de consulta. La migración 009 conserva la última cotización válida para cuando falte internet o la fuente no responda.

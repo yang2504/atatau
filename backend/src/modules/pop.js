@@ -51,9 +51,13 @@ export function popModule(db, admin) {
       const detail = sale ? `${product.name} × ${quantity}` : `${product.name} · ${text(req.body.detail, "Motivo", 160)}`;
       db.prepare("UPDATE pop_products SET stock=? WHERE id=?").run(stock, productId);
       const id = Number(db.prepare(`INSERT INTO pop_movements
-        (product_id,day,kind,quantity,detail,base_cents,surcharge_cents,method,user_id)
-        VALUES(?,?,?,?,?,?,?,?,?)`).run(productId, localDay(), kind, quantity, detail, base, surcharge, method, req.user.id).lastInsertRowid);
-      audit(db, req.user, "create", "pop_movement", id);
+        (product_id,day,kind,quantity,detail,base_cents,surcharge_cents,method,user_id,turn_id)
+        VALUES(?,?,?,?,?,?,?,?,?,?)`).run(productId, localDay(), kind, quantity, detail, base, surcharge, method,
+          req.user.id, sale ? req.user.turnId : null).lastInsertRowid);
+      audit(db, req.user, "create", "pop_movement", id, { stock: product.stock }, {
+        product_id: productId, kind, quantity, detail, stock, base_cents: base,
+        surcharge_cents: surcharge, method, turn_id: sale ? req.user.turnId : null,
+      });
       return { id, stock, cash_cents: base, surcharge_cents: surcharge, collected_cents: base + surcharge };
     });
     res.status(201).json(result);

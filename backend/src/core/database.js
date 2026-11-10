@@ -88,6 +88,13 @@ export function openDatabase(
       db.exec("PRAGMA user_version = 9");
     });
   }
+  if (db.prepare("PRAGMA user_version").get().user_version < 10) {
+    transaction(db, () => {
+      if (db.prepare("PRAGMA user_version").get().user_version >= 10) return;
+      db.exec(readFileSync(new URL("./010-turns-and-audit.sql", import.meta.url), "utf8"));
+      db.exec("PRAGMA user_version = 10");
+    });
+  }
   db.prepare(
     "INSERT OR IGNORE INTO platforms (id,name,active) VALUES (1,'Sin reserva / directo',1),(2,'Booking',1),(3,'Hostelworld',1)",
   ).run();

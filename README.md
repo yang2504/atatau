@@ -19,7 +19,7 @@ Si vas a trasladar una base de desarrollo, detén las dos instancias y copia el 
 ## Desarrollo desde el código fuente
 
 - Node.js **22.14 o superior de la rama 22** (o una versión posterior compatible). Esta base usa `node:sqlite`; Node 22.14 lo incluye con aviso experimental. No hace falta instalar SQLite, PostgreSQL, Docker ni compiladores nativos.
-- Internet se usa para descargar dependencias al preparar el proyecto y para consultar el dólar oficial cuando se pulsa **Dólar BCB**. El resto de la aplicación compilada funciona sin internet.
+- Internet se usa para descargar dependencias al preparar el proyecto y para consultar el dólar oficial al pulsar **Dólar BCB** o activar la conversión de tarifas. El resto de la aplicación compilada funciona sin internet.
 
 Desde la carpeta raíz:
 
@@ -46,10 +46,11 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 ## Qué funciona
 
 - Calendario de 7 o 14 días con encabezado fijo, iconos de personas y filas por cama. Permite seleccionar rangos, navegar por fechas, crear y editar reservas. Arrastrar una reserva de una cama o privada conserva el número de noches. Las reservas de varias camas se reubican desde su formulario.
+- Cada reserva muestra las iniciales de quien registró su estado actual con **R** para reserva, **E** para entrada y **S** para salida. Al abrir la reserva o su hoja se ven los responsables de cada etapa. Las salidas anteriores al registro de auditoría pueden aparecer sin responsable.
 - Privadas completas y dormitorios con camas individuales. Administración puede editar el nombre y la capacidad desde **Habitaciones**, además de habilitar e inhabilitar.
 - El calendario indica las camas libres sobre el total de cada dormitorio para cada fecha. En privadas muestra si la habitación está libre u ocupada.
 - La barra superior permanece visible al desplazarse. **Buscar huésped** muestra resultados en vivo y abre reservas u hojas de consumo. Incluye acompañantes y búsquedas sin tildes. El menú lateral agrupa las pantallas por área.
-- **Dólar BCB** muestra el tipo de cambio oficial en bolivianos por dólar, su vigencia y la hora de consulta. Si falla la consulta, muestra el último dato guardado con un aviso. Es una consulta informativa y no interviene en los cobros.
+- **Dólar BCB** destaca el importe oficial en bolivianos por dólar, su estado de vigencia y la hora de la última consulta exitosa. Si falla la consulta, muestra el último dato guardado con un aviso. La conversión de tarifas usa la misma consulta.
 - Reservas con responsable, PAX, acompañantes opcionales, canal, fechas, notas y estado. Detección de cruces en backend dentro de una transacción.
 - El botón **+** de una reserva activa en el calendario abre **Alargar estadía**. Puedes agregar noches antes de la llegada o después de la salida. Las noches originales conservan su tarifa y sus abonos. Las adicionales usan la tarifa normal indicada al guardar. La sugerencia viene del talonario por PAX y desayuno o de la tarifa directa de la habitación.
 - Booking, Hostelworld y entrada directa disponibles. Agregar/inhabilitar plataformas conserva el historial. Son etiquetas de origen: **no hay sincronización con plataformas externas**.
@@ -62,11 +63,15 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - Al pulsar **Registrar llegada**, la reserva guarda el usuario que recibió a los huéspedes y la fecha y hora del registro. Las llegadas anteriores a esta función quedan sin ese dato.
 - En **Reservas** se elige el plan con o sin desayuno para toda la estadía. **Desayunos** muestra por fecha las personas, su habitación y su reserva. Cuenta un desayuno por persona la mañana siguiente a cada noche, incluida la salida. Separa los pendientes de confirmación y omite las cancelaciones.
 - Al registrar una llegada, puedes cobrar el saldo completo del hospedaje con un solo pago. En una reserva pendiente, **Confirmar y registrar llegada** permite hacerlo en el mismo paso. La hoja muestra un comprobante de estadía y Caja Chica recibe un solo movimiento. Las hojas individuales muestran cuánto les corresponde del mismo pago.
-- **Hojas de consumo** separa habitaciones privadas y dormitorios. Una hoja aparece en el mes de llegada cuando se confirma la reserva. Si se registra un adelanto en una reserva pendiente, sus hojas quedan disponibles en el mes de llegada y en el del abono. Los abonos posteriores también permiten encontrar la hoja en su mes.
+- **Hojas de consumo** separa habitaciones privadas y dormitorios. Filtra por habitación, nombre del huésped o número de reserva y consulta un mes concreto o todos. En cada mes aparecen las hojas con noches, servicios o abonos en ese período. Los filtros abren las mismas cuentas y muestran la habitación asignada en la reserva.
+- Los cargos con saldo tienen un subrayado rojo y el texto **Pendiente de pago**. Los abonos parciales conservan la señal hasta cubrir el saldo. Al anular un abono, la señal reaparece si queda saldo.
+- La hoja muestra el total de cargos, los abonos y el saldo pendiente antes del detalle. En cada consumo se distingue a quien registró el cargo de quien recibió el abono. Los cobros de estadía tienen sus propios comprobantes.
 - En una reserva puedes elegir una hoja por huésped o una cuenta conjunta a nombre de la persona encargada. Si dejas el encargado vacío, se usa el titular de la reserva.
 - **Caja Chica** recibe los abonos de huéspedes y **Caja Pub** recibe las ventas del inventario. Elige una caja antes de anotar un movimiento manual. Administración tiene ingresos, egresos, neto e historial mensual separados por caja. Los movimientos manuales previos quedaron en Caja Chica.
+- **Caja → Mi turno** empieza en Bs 0 en cada inicio de sesión. Los movimientos manuales, abonos y ventas se vinculan al turno en que se registran, incluso cuando su fecha contable es otra. Cerrar sesión finaliza el turno y conserva los movimientos. **Historial de turnos** muestra la apertura, el cierre, el usuario y los movimientos de cada caja. Recepción consulta sus turnos y administración consulta los del equipo.
+- **Convertir tarifa de USD a Bs** consulta el tipo de cambio oficial del BCB al activar la casilla. Puedes aplicar el equivalente a una reserva, una extensión o el talonario. Si el BCB no responde, se usa el último dato oficial guardado mientras esté vigente. Cuando falta una cotización vigente, se usa el respaldo de **Configuración → Tipo de cambio para hospedaje**, si administración lo guardó. El importe aplicado se redondea al centavo y se guarda en bolivianos.
 - **Inventario Pub** registra productos, entradas, bajas y ventas. Cada venta descuenta unidades y registra el ingreso en Caja Pub dentro de la misma transacción.
-- Registro técnico de cambios en `audit_log`, todavía sin visor en la interfaz.
+- **Auditoría** permite a administración consultar el usuario, la hora local y los valores anterior y nuevo de reservas, llegadas, cambios de habitación y fechas, cancelaciones, consumos, abonos y movimientos de caja. Los registros históricos conservan la información que se guardaba en su momento.
 
 ## Reglas de operación
 
@@ -97,14 +102,15 @@ Las personas acompañantes sin nombre se guardan como `Acompañante 2`, etc. Fal
 | Crear/activar/desactivar recepcionistas | No | Sí | Sí |
 | Editar nombre, usuario y color de recepcionistas | No | Sí | Sí |
 | Crear/activar/desactivar administradores y superadministradores | No | No | Sí |
-| Ver ingresos del día y registrar ingresos manuales del día | Sí | Sí | Sí |
+| Consultar el turno propio y registrar ingresos manuales del día | Sí | Sí | Sí |
+| Consultar turnos del equipo, auditoría y configurar el cambio de hospedaje | No | Sí | Sí |
 | Ver cuaderno mensual, registrar egresos y anular movimientos manuales | No | Sí | Sí |
 | Consultar Inventario Pub y registrar ventas | Sí | Sí | Sí |
 | Editar Inventario Pub y registrar entradas o bajas de stock | No | Sí | Sí |
 
 Solo el rol superadministrador ve las cuentas y novedades de ese nivel. Los demás roles ven los movimientos compartidos necesarios para operar, con la identidad del superadministrador protegida. Administración puede editar su propio perfil y gestionar las cuentas de recepción.
 
-Nadie puede desactivar su propio usuario. La gestión de roles existentes, recuperación/cambio de contraseñas y el visor de auditoría quedan pendientes de una próxima etapa.
+Nadie puede desactivar su propio usuario. La gestión de roles existentes y la recuperación o cambio de contraseñas quedan pendientes.
 
 ## Datos y respaldo
 
@@ -112,7 +118,7 @@ La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el pa
 
 SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
-Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 009 agrega el almacenamiento de la última cotización consultada del BCB.
+Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 010 incorpora turnos, valores de auditoría y el tipo de cambio de hospedaje. Los movimientos previos siguen en el cuaderno por fecha y los turnos se registran desde la actualización. Los eventos anteriores pueden aparecer sin valores anterior y nuevo.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 

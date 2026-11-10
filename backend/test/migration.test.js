@@ -27,6 +27,7 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
         INSERT INTO folio_payments(folio_id,lodging_day,day,amount_cents,method,user_id)
           VALUES(1,'2026-11-01','2026-11-01',10000,'QR',1);
         INSERT INTO notes(body,category,reservation_id,created_by) VALUES('Mensaje histórico','handover',1,1);
+        INSERT INTO audit_log(user_id,action,entity,entity_id) VALUES(1,'create','reservation',1);
         PRAGMA user_version=1;
       `);
     } finally {
@@ -34,7 +35,7 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
     }
     const db = openDatabase(path);
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 9);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 10);
       assert.equal(db.prepare("SELECT COUNT(*) AS n FROM reservation_night_rates").get().n, 0);
       assert.equal(db.prepare("SELECT folio_holder FROM reservations WHERE id=1").get().folio_holder, "");
       assert.equal(db.prepare("SELECT active FROM units WHERE id=1").get().active, 1);
@@ -44,8 +45,10 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
       assert.equal(db.prepare("SELECT status FROM reservations WHERE id=1").get().status, "checked_out");
       assert.equal(db.prepare("SELECT COUNT(*) AS total FROM allocations").get().total, 1);
       assert.equal(db.prepare("SELECT body FROM notes WHERE reservation_id=1").get().body, "Mensaje histórico");
-      const payment = db.prepare("SELECT amount_cents,surcharge_cents,group_id FROM folio_payments").get();
+      const payment = db.prepare("SELECT amount_cents,surcharge_cents,group_id,turn_id FROM folio_payments").get();
       assert.equal(payment.group_id, null);
+      assert.equal(payment.turn_id, null);
+      assert.equal(db.prepare("SELECT before_json FROM audit_log WHERE entity_id=1").get().before_json, null);
       assert.equal(payment.amount_cents, 10000);
       assert.equal(payment.surcharge_cents, 0);
     } finally {
@@ -86,7 +89,7 @@ test("la migración 003 completa ambas variantes instaladas de la versión 002",
         }
         const db = openDatabase(path);
         try {
-          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 9);
+          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 10);
           assert.equal(db.prepare("SELECT cash_box FROM cash_entries").get().cash_box, "petty");
           const notes = db.prepare("SELECT body,reply_to FROM notes ORDER BY id").all();
           assert.equal(notes[0].body, "Mensaje anterior");

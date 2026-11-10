@@ -1,4 +1,5 @@
 import { date } from "../core/validation.js";
+import { localDay } from "../core/charges.js";
 
 const source = "https://www.bcb.gob.bo/index.php";
 
@@ -13,6 +14,7 @@ export function readOfficialRate(html) {
 
 export function bcbRateHandler(db, request = fetch) {
   const saved = db.prepare("SELECT rate,valid_until,fetched_at FROM bcb_usd_rate WHERE id=1");
+  const fallback = db.prepare("SELECT scaled_rate FROM lodging_exchange_rate WHERE id=1");
   const save = db.prepare(`INSERT INTO bcb_usd_rate(id,rate,valid_until,fetched_at) VALUES(1,?,?,?)
     ON CONFLICT(id) DO UPDATE SET rate=excluded.rate,valid_until=excluded.valid_until,
       fetched_at=excluded.fetched_at WHERE excluded.valid_until>=bcb_usd_rate.valid_until`);
@@ -42,6 +44,12 @@ export function bcbRateHandler(db, request = fetch) {
       pending = refresh().finally(() => { pending = null; });
       await pending;
     }
-    res.json({ quote: saved.get() ?? null, source, unavailable });
+    const quote = saved.get() ?? null;
+    const current = quote && quote.valid_until >= localDay() ? quote : null;
+    const manual = current ? null : fallback.get();
+    const lodging_rate = current
+      ? { scaled_rate: Math.round(Number(current.rate) * 10_000), source: "bcb" }
+      : manual ? { ...manual, source: "manual" } : null;
+    res.json({ quote, source, unavailable, lodging_rate });
   };
 }

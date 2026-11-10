@@ -38,13 +38,18 @@ export function daysBetween(start: string, end: string) {
       86400000,
   );
 }
-export function shortDate(day: string) {
+export function shortDate(day: string, includeYear = false) {
   return new Intl.DateTimeFormat("es-BO", {
     day: "numeric",
     month: "short",
+    year: includeYear ? "numeric" : undefined,
     timeZone: "UTC",
   }).format(new Date(`${day}T00:00:00Z`));
 }
+const operationTime = new Intl.DateTimeFormat("es-BO", {
+  dateStyle: "short", timeStyle: "medium", timeZone: "America/La_Paz",
+});
+export const localDateTime = (at: string) => operationTime.format(new Date(at));
 export const statusNames: Record<string, string> = {
   pending: "Pendiente",
   confirmed: "Confirmada",

@@ -12,43 +12,64 @@ export function Folios({
 }) {
   const [query, setQuery] = useState("");
   const [month, setMonth] = useState(() => today().slice(0, 7));
+  const [allMonths, setAllMonths] = useState(false);
   const [type, setType] = useState<"private" | "dorm">("private");
+  const [roomId, setRoomId] = useState("");
   const byId = new Map(
     data.reservations.map((reservation) => [reservation.id, reservation]),
   );
   const monthly = data.folios.filter((f) =>
-    (f.check_in.slice(0, 7) === month || f.paid_months.includes(month)) &&
-    folioMatches(query, f, byId.get(f.reservation_id)),
+    (!roomId || String(f.room_id) === roomId) &&
+    (allMonths || (f.check_in.slice(0, 7) <= month && f.check_out > month + "-01") ||
+      f.paid_months.includes(month) || f.service_months.includes(month)) &&
+    (query.trim().replace(/^#/, "") === String(f.reservation_id) ||
+      folioMatches(query, f, byId.get(f.reservation_id))),
   );
   const folios = monthly.filter((f) => (f.room_type ?? "private") === type);
+  function changeType(next: typeof type) {
+    if (next !== type) setRoomId("");
+    setType(next);
+  }
   return (
     <section className="panel">
-      <div className="section-toolbar">
+      <div className="section-toolbar folio-toolbar">
         <div>
           <h2>Hojas de consumo</h2>
           <p className="muted">
-            Consulta las hojas por mes de llegada o de abono.
+            Busca por habitación, huésped o reserva. El mes incluye estadías, consumos y abonos.
           </p>
         </div>
         <div className="row-actions">
-          <label>Mes de las hojas <input type="month" value={month}
+          <label>Habitación
+            <select aria-label="Habitación" value={roomId} onChange={(e) => {
+              const id = e.target.value;
+              setRoomId(id);
+              const room = data.rooms.find((item) => String(item.id) === id);
+              if (room) setType(room.type);
+            }}>
+              <option value="">Todas las habitaciones</option>
+              {data.rooms.map((room) => <option value={room.id} key={room.id}>{room.name}</option>)}
+            </select>
+          </label>
+          <label>Mes de las hojas <input type="month" value={month} disabled={allMonths}
             onChange={(e) => { if (e.target.value) setMonth(e.target.value); }} /></label>
-          <input
+          <label className="check-option"><input type="checkbox" checked={allMonths}
+            onChange={(e) => setAllMonths(e.target.checked)} /> Todos los meses</label>
+          <label>Huésped o reserva<input
             type="search"
-            aria-label="Buscar cuenta"
-            placeholder="Buscar por nombre…"
+            placeholder="Nombre o # de reserva"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-          />
+          /></label>
         </div>
       </div>
       <div className="tabs" aria-label="Tipo de alojamiento" role="group">
         <button type="button" className={type === "private" ? "active" : ""}
-          aria-pressed={type === "private"} onClick={() => setType("private")}>
+          aria-pressed={type === "private"} onClick={() => changeType("private")}>
           Habitaciones privadas · {monthly.filter((f) => f.room_type !== "dorm").length}
         </button>
         <button type="button" className={type === "dorm" ? "active" : ""}
-          aria-pressed={type === "dorm"} onClick={() => setType("dorm")}>
+          aria-pressed={type === "dorm"} onClick={() => changeType("dorm")}>
           Dormitorios · {monthly.filter((f) => f.room_type === "dorm").length}
         </button>
       </div>
@@ -61,9 +82,7 @@ export function Folios({
           }
         >
           <p>
-            {query.trim()
-              ? "Prueba con otro nombre o apellido."
-              : "No hay hojas de este tipo para el mes seleccionado."}
+            No hay hojas para los filtros seleccionados.
           </p>
         </Empty>
       ) : (
@@ -71,12 +90,9 @@ export function Folios({
           <table>
             <thead>
               <tr>
-                <th>Hoja</th>
-                <th>Titular</th>
-                <th>Reserva</th>
+                <th>Cuenta</th>
                 <th>Habitación</th>
                 <th>Estadía</th>
-                <th>Tipo</th>
                 <th>Estado</th>
                 <th>Acción</th>
               </tr>
@@ -85,20 +101,14 @@ export function Folios({
               {folios.map((f) => (
                 <tr key={f.id}>
                   <td>
-                    <span className="table-id">
-                      <Icon name="book" size={16} />#{f.id}
-                    </span>
+                    <strong className="table-id"><Icon name="book" size={16} />{f.title}</strong>
+                    <small className="cell-sub">
+                      Hoja #{f.id} · Reserva #{f.reservation_id} · {f.folio_mode === "shared" ? "Cuenta del grupo" : "Individual"}
+                    </small>
                   </td>
-                  <td>
-                    <strong>{f.title}</strong>
-                  </td>
-                  <td>#{f.reservation_id}</td>
                   <td>{f.room_name ?? "Sin asignación"}</td>
                   <td>
-                    {shortDate(f.check_in)} → {shortDate(f.check_out)}
-                  </td>
-                  <td>
-                    {f.folio_mode === "shared" ? "Cuenta del grupo" : "Individual"}
+                    {shortDate(f.check_in, true)} → {shortDate(f.check_out, true)}
                   </td>
                   <td>
                     <span className={`tag ${f.status}`}>
@@ -106,7 +116,7 @@ export function Folios({
                     </span>
                   </td>
                   <td>
-                    <button className="text-button" onClick={() => onOpen(f)}>
+                    <button className="button secondary compact" onClick={() => onOpen(f)}>
                       Abrir hoja
                     </button>
                   </td>

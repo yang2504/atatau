@@ -16,24 +16,38 @@ import {
 export function listReservations(db, full = 1) {
   return db
     .prepare(
-      `SELECT r.*,p.name AS platform_name,u.name AS checked_in_by_name,
-        creator.role AS creator_role,u.role AS check_in_role,
+      `SELECT r.*,p.name AS platform_name,
+        COALESCE(creation.actor_name,creator.name) AS created_by_name,
+        COALESCE(arrival.actor_name,u.name) AS checked_in_by_name,
+        COALESCE(departure.actor_name,closer.name) AS checked_out_by_name,
+        creator.role AS creator_role,u.role AS check_in_role,closer.role AS check_out_role,
         (SELECT COALESCE(SUM(p.amount_cents),0) FROM folio_payments p
           JOIN folios f ON f.id=p.folio_id WHERE f.reservation_id=r.id
           AND p.lodging_day IS NOT NULL AND p.voided=0) AS lodging_paid_cents
         FROM reservations r JOIN platforms p ON p.id=r.platform_id
         JOIN users creator ON creator.id=r.created_by
-        LEFT JOIN users u ON u.id=r.checked_in_by ORDER BY r.check_in,r.id`,
+        LEFT JOIN audit_log creation ON creation.id=(
+          SELECT id FROM audit_log WHERE entity='reservation' AND entity_id=r.id AND action='create' ORDER BY id LIMIT 1)
+        LEFT JOIN users u ON u.id=r.checked_in_by
+        LEFT JOIN audit_log arrival ON arrival.id=(
+          SELECT id FROM audit_log WHERE entity='reservation' AND entity_id=r.id
+            AND action='check_in' AND user_id=r.checked_in_by ORDER BY id LIMIT 1)
+        LEFT JOIN audit_log departure ON departure.id=(
+          SELECT id FROM audit_log WHERE entity='reservation' AND entity_id=r.id AND action='check_out' ORDER BY id DESC LIMIT 1)
+        LEFT JOIN users closer ON closer.id=departure.user_id
+        ORDER BY r.check_in,r.id`,
     )
     .all()
-    .map(({ creator_role, check_in_role, ...r }) => {
+    .map(({ creator_role, check_in_role, check_out_role, ...r }) => {
       const rates = nightRates(db, r.id);
       return {
       ...r,
       created_by: !full && creator_role === "superadmin" ? null : r.created_by,
+      created_by_name: !full && creator_role === "superadmin" ? "Atatau" : r.created_by_name,
       checked_in_by: !full && check_in_role === "superadmin" ? null : r.checked_in_by,
-      checked_in_by_name: !full && check_in_role === "superadmin" ? null : r.checked_in_by_name,
+      checked_in_by_name: !full && check_in_role === "superadmin" ? "Atatau" : r.checked_in_by_name,
       checked_in_at: !full && check_in_role === "superadmin" ? null : r.checked_in_at,
+      checked_out_by_name: !full && check_out_role === "superadmin" ? "Atatau" : r.checked_out_by_name,
       night_rates: rates,
       paid_nights: paidNights(db, r.id, r.nightly_cents, rates),
       unit_ids: db
@@ -48,6 +62,19 @@ export function listReservations(db, full = 1) {
       };
     });
 }
+function reservationSnapshot(db, reservation, rates) {
+  const { created_by, checked_in_by, ...fields } = reservation;
+  return {
+    ...fields,
+    units: db.prepare(`SELECT a.unit_id,u.label,room.id AS room_id,room.name AS room_name
+      FROM allocations a JOIN units u ON u.id=a.unit_id JOIN rooms room ON room.id=u.room_id
+      WHERE a.reservation_id=? ORDER BY a.unit_id`).all(fields.id),
+    guests: db.prepare("SELECT id,name FROM guests WHERE reservation_id=? ORDER BY id").all(fields.id),
+    folios: db.prepare("SELECT id,title FROM folios WHERE reservation_id=? ORDER BY id").all(fields.id),
+    night_rates: rates,
+  };
+}
+
 export function saveReservation(db, body, user, id = null, extension = false) {
   return transaction(db, () => {
     const previous = id
@@ -93,6 +120,7 @@ export function saveReservation(db, body, user, id = null, extension = false) {
     )
       fail("Hora de llegada inválida.");
     const originalRates = previous ? nightRates(db, id) : {};
+    const before = previous ? reservationSnapshot(db, previous, originalRates) : null;
     let nextRates = originalRates;
     const datesChanged = previous && (start !== previous.check_in || end !== previous.check_out);
     if (datesChanged) {
@@ -288,18 +316,25 @@ export function saveReservation(db, body, user, id = null, extension = false) {
         "INSERT INTO allocations(reservation_id,unit_id) VALUES(?,?)",
       ).run(id, unit.id);
     if (["confirmed", "in_house", "checked_out"].includes(status) || advance != null)
-      ensureReservationFolios(db, id, mode, sharedTitle);
+      ensureReservationFolios(db, id, mode, sharedTitle, user);
     if (datesChanged && (extension || Object.keys(originalRates).length)) {
       db.prepare("DELETE FROM reservation_night_rates WHERE reservation_id=?").run(id);
       const insert = db.prepare("INSERT INTO reservation_night_rates(reservation_id,day,nightly_cents) VALUES(?,?,?)");
       for (const [day, rate] of Object.entries(nextRates)) insert.run(id, day, rate);
     }
-    audit(db, user, extension ? "extend" : previous ? "update" : "create", "reservation", id);
-    if (status === "in_house" && previous?.status !== "in_house" && !previous?.checked_in_by) {
+    const checkingIn = status === "in_house" && previous?.status !== "in_house";
+    const checkingOut = status === "checked_out" && previous?.status !== "checked_out";
+    if (checkingIn && !previous?.checked_in_by) {
       db.prepare("UPDATE reservations SET checked_in_by=?, checked_in_at=? WHERE id=?")
         .run(user.id, new Date().toISOString(), id);
-      audit(db, user, "check_in", "reservation", id);
     }
+    const action = !previous ? "create" : extension ? "extend" : checkingIn ? "check_in" :
+      status === "cancelled" && previous.status !== status ? "cancel" :
+      checkingOut ? "check_out" : "update";
+    const after = reservationSnapshot(db, db.prepare("SELECT * FROM reservations WHERE id=?").get(id), nextRates);
+    audit(db, user, action, "reservation", id, before, after);
+    if (!previous && checkingIn) audit(db, user, "check_in", "reservation", id, null, after);
+    if (!previous && checkingOut) audit(db, user, "check_out", "reservation", id, null, after);
     if (arrivalPayment != null) {
       recordStayPayment(db, id, { ...arrivalPayment, day: localDay() }, user, arrivalPayment.amount_cents);
     }

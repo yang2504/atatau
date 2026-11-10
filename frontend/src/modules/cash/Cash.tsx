@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { ErrorBox, Icon } from "../../components/UI";
 import { CardCharge } from "../../components/CardCharge";
-import { api, shortDate, today } from "../../lib/api";
+import { api, localDateTime, shortDate, today } from "../../lib/api";
 import { cents, money, paymentMethods } from "../../lib/money";
 import type { User } from "../../lib/types";
 
@@ -16,14 +16,16 @@ type Entry = {
   method: string;
   author: string;
   voided: number;
+  recorded_at: string | null;
 };
+type Turn = { id: number; started_at: string; ended_at: string | null; author: string };
 const sources = { manual: "Manual", folio: "Hoja de consumo", stay: "Cobro de estadía", pop: "Venta Pub" };
 
 export function Cash({ user }: { user: User }) {
   const admin = user.role !== "receptionist";
   const [box, setBox] = useState<"petty" | "pub">("petty");
   const boxLabel = box === "pub" ? "Caja Pub" : "Caja Chica";
-  const [view, setView] = useState("daily");
+  const [view, setView] = useState("current");
   const [month, setMonth] = useState(today().slice(0, 7));
   const [kind, setKind] = useState("income");
   const [method, setMethod] = useState("Efectivo");
@@ -32,12 +34,46 @@ export function Cash({ user }: { user: User }) {
   const [version, setVersion] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const path = view === "monthly" ? `/cash/monthly?month=${month}&box=${box}` : `/cash/daily?box=${box}`;
+  const [turn, setTurn] = useState<Turn | null>(null);
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turnId, setTurnId] = useState("");
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingTurns, setLoadingTurns] = useState(false);
+  async function loadTurns(before?: number) {
+    setError("");
+    setLoadingTurns(true);
+    try {
+      const page = await api<Turn[]>(`/cash/turns${before ? `?before=${before}` : ""}`);
+      setTurns((current) => before ? [...current, ...page] : page);
+      setHasOlder(page.length === 50);
+      if (!before) setTurnId(page[0] ? String(page[0].id) : "");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoadingTurns(false);
+    }
+  }
+  function switchView(next: string) {
+    setError("");
+    setView(next);
+    if (next === "history") void loadTurns();
+  }
+  const byTurn = view === "current" || view === "history";
+  const path = view === "monthly" ? `/cash/monthly?month=${month}&box=${box}`
+    : byTurn ? (view === "current" || turnId) && `/cash/turns/${view === "current" ? "current" : turnId}?box=${box}`
+    : `/cash/daily?box=${box}`;
   useEffect(() => {
     let active = true;
     setEntries(null);
-    void api<Entry[]>(path).then((rows) => {
-      if (active) setEntries(rows);
+    setTurn(null);
+    if (!path) return;
+    void api<Entry[] | (Turn & { entries: Entry[] })>(path).then((result) => {
+      if (!active) return;
+      if (Array.isArray(result)) setEntries(result);
+      else {
+        setTurn(result);
+        setEntries(result.entries);
+      }
     }).catch((error) => {
       if (active) setError(error.message);
     });
@@ -91,23 +127,39 @@ export function Cash({ user }: { user: User }) {
       <button className={box === "petty" ? "active" : ""} aria-pressed={box === "petty"} onClick={() => switchBox("petty")} disabled={busy}>Caja Chica</button>
       <button className={box === "pub" ? "active" : ""} aria-pressed={box === "pub"} onClick={() => switchBox("pub")} disabled={busy}>Caja Pub</button>
     </div>
-    {admin && <div className="tabs">
-      <button className={view === "daily" ? "active" : ""} onClick={() => { setView("daily"); setError(""); }}>Caja diaria</button>
-      <button className={view === "monthly" ? "active" : ""} onClick={() => { setView("monthly"); setError(""); }}>Cuaderno mensual</button>
-    </div>}
+    <div className="tabs" role="group" aria-label="Período de caja">
+      <button className={view === "current" ? "active" : ""} aria-pressed={view === "current"} onClick={() => switchView("current")}>Mi turno</button>
+      <button className={view === "history" ? "active" : ""} aria-pressed={view === "history"} onClick={() => switchView("history")}>Historial de turnos</button>
+      {admin && <>
+        <button className={view === "daily" ? "active" : ""} aria-pressed={view === "daily"} onClick={() => switchView("daily")}>Caja diaria</button>
+        <button className={view === "monthly" ? "active" : ""} aria-pressed={view === "monthly"} onClick={() => switchView("monthly")}>Cuaderno mensual</button>
+      </>}
+    </div>
     <ErrorBox message={error} />
-    <div className="content-columns operations-layout">
+    <div className={view === "current" ? "content-columns operations-layout" : undefined}>
       <section className="panel">
         <div className="section-toolbar">
-          <h2>{boxLabel} · {view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
+          <h2>{boxLabel} · {byTurn ? (turn ? `Turno #${turn.id}` : "Turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
           {view === "monthly" && <input type="month" aria-label="Mes del cuaderno" value={month} onChange={(e) => { if (e.target.value) setMonth(e.target.value); }} />}
         </div>
+        {view === "history" && <div className="row-actions turn-meta">
+          <label>Turno<select aria-label="Turno" value={turnId} onChange={(e) => { setError(""); setTurnId(e.target.value); }} disabled={loadingTurns}>
+            {!turns.length && <option value="">Sin turnos para mostrar</option>}
+            {turns.map((item) => <option value={item.id} key={item.id}>
+              #{item.id} · {item.author} · {localDateTime(item.started_at)}
+            </option>)}
+          </select></label>
+          {hasOlder && <button className="button secondary" disabled={loadingTurns}
+            onClick={() => void loadTurns(turns.at(-1)?.id)}>Ver turnos anteriores</button>}
+        </div>}
+        {turn && <p className="muted turn-meta">
+          {turn.author} · Apertura {localDateTime(turn.started_at)} · {turn.ended_at ? `Cierre ${localDateTime(turn.ended_at)}` : "Turno abierto"}
+        </p>}
         <div className="ledger-totals">
+          {byTurn && <span>Saldo inicial <strong>{money(0)}</strong></span>}
           <span>Ingresos <strong>{entries ? money(total("income")) : "—"}</strong></span>
-          {admin && <>
-            <span>Egresos <strong>{entries ? money(total("expense")) : "—"}</strong></span>
-            <span>Neto de caja <strong>{entries ? money(total("income") - total("expense")) : "—"}</strong></span>
-          </>}
+          <span>Egresos <strong>{entries ? money(total("expense")) : "—"}</strong></span>
+          <span>Neto de caja <strong>{entries ? money(total("income") - total("expense")) : "—"}</strong></span>
         </div>
         {!entries && !error && <p className="quiet-state" role="status">Cargando movimientos…</p>}
         {entries?.length === 0 && <p className="quiet-state">Aún no hay movimientos en este período.</p>}
@@ -115,7 +167,7 @@ export function Cash({ user }: { user: User }) {
           <table>
             <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe en caja</th>{admin && <th>Acción</th>}</tr></thead>
             <tbody>{entries.map((row) => <tr key={`${row.source}-${row.id}`} className={row.voided ? "void-row" : ""}>
-              <td>{shortDate(row.day)}</td>
+              <td>{shortDate(row.day, byTurn)}{row.recorded_at && <small className="cell-sub">Registro {localDateTime(row.recorded_at)}</small>}</td>
               <td><strong>{row.detail}</strong><small className="cell-sub">{sources[row.source]} · {row.author}{row.voided ? " · Anulado" : ""}</small></td>
               <td>{row.method}</td>
               <td>{row.kind === "expense" ? "−" : ""}{money(row.cash_cents)}
@@ -128,7 +180,7 @@ export function Cash({ user }: { user: User }) {
           </table>
         </div>}
       </section>
-      <section className="panel side-form">
+      {view === "current" && <section className="panel side-form">
         <h2>{admin ? "Nuevo movimiento" : "Registrar ingreso"} · {boxLabel}</h2>
         <p className="muted">{box === "pub" ? "Las ventas de Inventario Pub entran aquí automáticamente." : "Los abonos de huéspedes entran aquí automáticamente."}</p>
         <form className="form-stack" onSubmit={record}>
@@ -142,7 +194,7 @@ export function Cash({ user }: { user: User }) {
           {kind === "income" && method === "Tarjeta" && <CardCharge base={base} />}
           <button className="button primary" disabled={busy}><Icon name="plus" size={16} /> Registrar</button>
         </form>
-      </section>
+      </section>}
     </div>
   </div>;
 }

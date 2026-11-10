@@ -1794,22 +1794,64 @@ details[open] summary {
   font-size: 13px;
   line-height: 1.5;
 }
-.folio-table {
-  min-width: 875px;
-}
+.folio-table { min-width: 740px; }
 .folio-table td,
 .folio-table th {
   padding: 10px;
 }
-.folio-table td:nth-child(3) {
-  max-width: 210px;
+.folio-table td:nth-child(2),
+.folio-table td:nth-child(6) {
+  max-width: 230px;
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.folio-table tfoot {
-  background: #fbebbb;
-  font-weight: bold;
+.folio-row-due > strong { color: #972018; }
+.folio-operator { display: block; }
+.folio-movements { margin-top: 18px; }
+.folio-movements h3 { margin-bottom: 8px; }
+.folio-header > .tag { justify-self: end; }
+.folio-header > p { grid-column: 1 / -1; }
+.reservation-staff,
+.folio-summary,
+.bcb-metadata {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 115px), 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
 }
+.reservation-staff > div,
+.folio-summary > div,
+.bcb-metadata > div {
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f7f9f5;
+}
+.reservation-staff dt,
+.folio-summary dt,
+.bcb-metadata dt { font-size: 12px; color: #506357; }
+.reservation-staff dd,
+.folio-summary dd,
+.bcb-metadata dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.folio-summary dd { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.folio-summary .folio-balance-due { background: #fff1ec; color: #972018; border-color: #f5d5cc; }
+.folio-summary .folio-balance-paid { background: #eaf4e7; }
+.bcb-quote {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: 22px;
+  border-radius: 12px;
+  background: var(--green);
+  color: #fff;
+}
+.bcb-quote-label { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.bcb-quote-value { display: grid; gap: 3px; margin: 0; }
+.bcb-quote-value strong { font-size: clamp(1.8rem, 6vw, 2.65rem); line-height: 1.05; }
+.bcb-quote-value span { font-size: 13px; color: #dce9de; }
+.bcb-badge { border-radius: 99px; background: #e6f1dd; color: #234638; padding: 4px 9px; font-size: 12px; }
+.bcb-badge.expired { background: #ffe3af; color: #653c00; }
+.bcb-metadata { margin: 0; }
 .folio-form {
   margin-top: 16px;
   padding: 15px;
@@ -1896,6 +1938,14 @@ details[open] summary {
 .reservation-block.pending { border: 2px dashed #496b58; color: #294538; }
 .reservation-block.pending .reservation-avatar { background: transparent; }
 .reservation-block.can-extend { padding-inline-end: 30px; }
+.reservation-block.single-night .reservation-avatar { display: none; }
+.reservation-initials {
+  border-radius: 3px;
+  background: #fff9;
+  color: #203f32;
+  padding-inline: 2px;
+  font-weight: 700;
+}
 .reservation-extend {
   grid-row: 1;
   justify-self: end;
@@ -2039,4 +2089,68 @@ details[open] summary {
   .calendar-toolbar { flex-wrap: wrap; }
   .chat-message { max-width: 100%; }
   .chat-composer { grid-template-columns: 1fr; }
+}
+.check-option,
+.form-stack .check-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.check-option input {
+  width: auto;
+  min-width: auto;
+  min-height: auto;
+}
+.unpaid-charge {
+  text-decoration: underline #b42318 2px;
+  text-underline-offset: 0.2em;
+}
+.audit-event {
+  border-block-start: 1px solid var(--border);
+  padding: 0.8rem 0;
+}
+.audit-panel h2 {
+  margin-bottom: 1rem;
+}
+.audit-event summary {
+  cursor: pointer;
+  color: #293e38;
+}
+.audit-event summary span {
+  margin-inline-start: 0.75rem;
+}
+.audit-values {
+  overflow-wrap: anywhere;
+  margin-block-start: 0.75rem;
+  color: #293e38;
+}
+.audit-values section > dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 0.5rem;
+}
+.audit-values dt {
+  font-weight: 600;
+}
+.audit-values dd {
+  margin: 0 0 0.4rem 0.75rem;
+}
+.folio-toolbar {
+  flex-wrap: wrap;
+}
+.folio-toolbar .row-actions {
+  align-items: end;
+}
+.folio-toolbar label:not(.check-option) {
+  display: grid;
+  gap: 0.35rem;
+}
+.folio-toolbar .check-option {
+  align-self: center;
+}
+.folio-toolbar input {
+  min-width: 0;
+}
+.turn-meta {
+  padding: 0.7rem 22px 0;
 }

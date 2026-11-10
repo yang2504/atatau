@@ -1,5 +1,6 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { ErrorBox } from "../../components/UI";
+import { UsdConversion } from "../../components/UsdConversion";
 import { api } from "../../lib/api";
 import { cents, money } from "../../lib/money";
 import type { Data } from "../../lib/types";
@@ -17,6 +18,7 @@ export function RoomRates({
   const [breakfast, setBreakfast] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const rateInput = useRef<HTMLInputElement>(null);
   const rooms = data.rooms.filter((room) => room.active);
   const room = rooms.find((room) => room.id === selectedRoom) ?? rooms[0];
   if (!room) return null;
@@ -102,6 +104,7 @@ export function RoomRates({
         <label>
           Tarifa por noche (Bs)
           <input
+            ref={rateInput}
             key={`${room.id}-${platform}-${pax}-${breakfast}-${current}`}
             name="rate"
             inputMode="decimal"
@@ -112,6 +115,10 @@ export function RoomRates({
             placeholder="Sin tarifa específica"
           />
         </label>
+        <UsdConversion key={`${room.id}-${platform}-${pax}-${breakfast}`}
+          onApply={(value) => {
+            if (rateInput.current) rateInput.current.value = value;
+          }} />
         <small>
           {current === undefined
             ? "Deja el importe vacío para usar la tarifa base o ingresarlo manualmente."

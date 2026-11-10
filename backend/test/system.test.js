@@ -127,12 +127,15 @@ test("reservas, permisos y persistencia transaccional", async () => {
     );
     assert.deepEqual((await request("/reservations")).body[0].paid_nights, []);
     const service = await request(path + "/services", {
-      day: draft.check_in,
+      day: "2026-12-01",
       service: "Lavandería",
       detail: "Una carga",
       total_cents: 2500,
     });
     assert.equal(service.status, 201);
+    const listedFolio = (await request("/folios")).body.find((row) => row.id === folio.id);
+    assert.equal(listedFolio.room_id, room.body.id);
+    assert.deepEqual(listedFolio.service_months, ["2026-12"]);
     assert.equal(
       (
         await request(path + "/payments", {
@@ -347,7 +350,7 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const receptionLogin = await request("/auth/login", {
       username: "recepcion",
       password: "clave-de-recepcion",
-    });
+    }, "POST", "");
     assert.equal(receptionLogin.status, 200);
     const firstPath = `/reservations/${first.body.id}`;
     const arrived = { ...draft, status: "in_house", checked_in_by: setup.body.id };
@@ -458,12 +461,23 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.ok((await request(monthPath + "&box=pub")).body.some((row) => row.kind === "expense" && row.id === pubExpense.body.id));
     assert.ok(!(await request(monthPath)).body.some((row) => row.source === "manual" && row.id === pubExpense.body.id));
     assert.equal((await request("/cash/daily?box=otro")).status, 400);
+    const ownTurn = (await request("/cash/turns/current", undefined, "GET", receptionLogin.cookie)).body;
+    assert.deepEqual(ownTurn.entries.map((row) => [row.source, row.id]), [["manual", manualCard.body.id]]);
+    assert.ok(ownTurn.entries[0].recorded_at);
+    assert.equal((await request("/cash/turns/current?box=pub", undefined, "GET", receptionLogin.cookie)).body.entries.length, 1);
+    const ownerTurn = (await request("/cash/turns/current")).body;
+    assert.equal((await request(`/cash/turns/${ownerTurn.id}`, undefined, "GET", receptionLogin.cookie)).status, 404);
+    assert.equal((await request("/audit", undefined, "GET", receptionLogin.cookie)).status, 403);
+    assert.equal((await request("/lodging-exchange-rate", { scaled_rate: 70000 }, "PUT", receptionLogin.cookie)).status, 403);
+    assert.equal((await request("/lodging-exchange-rate", { scaled_rate: 0 }, "PUT")).status, 400);
+    assert.equal((await request("/lodging-exchange-rate", { scaled_rate: 70000 }, "PUT")).status, 200);
+    assert.equal((await request("/lodging-exchange-rate", undefined, "GET", receptionLogin.cookie)).body.scaled_rate, 70000);
 
     const admin = await request("/users", {
       name: "Administración", username: "admin-demo", password: "clave-segura-prueba", role: "admin",
     });
     assert.equal(admin.status, 201);
-    const adminLogin = await request("/auth/login", { username: "admin-demo", password: "clave-segura-prueba" });
+    const adminLogin = await request("/auth/login", { username: "admin-demo", password: "clave-segura-prueba" }, "POST", "");
     const adminRequest = (path, body, method) => request(path, body, method, adminLogin.cookie);
     assert.ok((await adminRequest("/users")).body.every((user) => user.role !== "superadmin"));
     assert.equal((await adminRequest(`/users/${setup.body.id}`, { name: "Cambio" }, "PATCH")).status, 404);
@@ -477,6 +491,9 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal(hiddenAuthor.user_id, undefined);
     const protectedReservation = (await adminRequest("/reservations")).body.find((row) => row.id === first.body.id);
     assert.equal(protectedReservation.created_by, null);
+    assert.equal(protectedReservation.created_by_name, "Atatau");
+    assert.equal(protectedReservation.checked_in_by_name, "Recepción");
+    assert.equal(protectedReservation.checked_out_by_name, null);
 
     const roomPath = `/rooms/${dorm.body.id}`;
     const dormBed = rooms[1].units.at(-1).id;
@@ -532,6 +549,14 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal(otherDetail.stay_payments[0].id, receipt.id);
     assert.ok(otherDetail.entries.every((row) => row.balance_cents === 0 && row.payments.length === 0));
     assert.deepEqual((await request("/cash/daily")).body.filter((row) => row.source === "stay").map((row) => row.cash_cents), [20102, 100]);
+    assert.deepEqual((await adminRequest("/cash/turns/current")).body.entries
+      .filter((row) => row.source === "stay").map((row) => row.cash_cents), [20102]);
+    const checkInEvents = (await adminRequest("/audit")).body.filter((event) =>
+      event.entity === "reservation" && event.entity_id === booking.body.id && event.action === "check_in");
+    assert.equal(checkInEvents.length, 1);
+    assert.equal(checkInEvents[0].author, "Administración");
+    assert.equal(checkInEvents[0].before.status, "pending");
+    assert.equal(checkInEvents[0].after.status, "in_house");
 
     const editPath = stayPath + `/stay-payments/${receipt.id}`;
     const badCorrection = await request(editPath, { day: today, method: "Efectivo", amount_cents: 30000 }, "PATCH");
@@ -594,13 +619,56 @@ test("reservas, permisos y persistencia transaccional", async () => {
       ...continued, status: "in_house", check_in_payment: { amount_cents: 42000, method: "Efectivo" },
     }, "PUT")).status, 200);
     assert.ok((await request(promotionalSheet)).body.entries.every((row) => row.balance_cents === 0));
+    const departure = { ...continued, status: "checked_out" };
+    assert.equal((await adminRequest(holderPath, departure, "PUT")).status, 200);
+    assert.equal((await request(holderPath, { ...departure, comments: "Edición posterior" }, "PUT")).status, 200);
+    const attributed = (await request("/reservations")).body.find((row) => row.id === holderBooking.body.id);
+    assert.equal(attributed.created_by_name, setup.body.name);
+    assert.equal(attributed.checked_in_by_name, setup.body.name);
+    assert.equal(attributed.checked_out_by_name, "Administración");
+    const masked = (await adminRequest("/reservations")).body.find((row) => row.id === holderBooking.body.id);
+    assert.deepEqual([masked.created_by_name, masked.checked_in_by_name, masked.checked_out_by_name],
+      ["Atatau", "Atatau", "Administración"]);
+    const moved = {
+      ...stay, guest_name: "Traslado auditado", check_in: "2098-01-01", check_out: "2098-01-02",
+    };
+    const move = await request("/reservations", moved, "POST", receptionLogin.cookie);
+    assert.equal(move.status, 201);
+    const movePath = `/reservations/${move.body.id}`;
+    const relocated = {
+      ...moved, check_in: "2098-01-02", check_out: "2098-01-03", unit_ids: [rooms[0].units[0].id],
+    };
+    assert.equal((await adminRequest(movePath, relocated, "PUT")).status, 200);
+    assert.equal((await adminRequest(movePath, { ...relocated, status: "cancelled" }, "PUT")).status, 200);
+    const history = (await adminRequest("/audit")).body.filter((event) =>
+      event.entity === "reservation" && event.entity_id === move.body.id);
+    assert.deepEqual(history.map((event) => event.action), ["cancel", "update", "create"]);
+    assert.equal(history[0].after.status, "cancelled");
+    assert.equal(history[1].before.check_in, moved.check_in);
+    assert.equal(history[1].after.check_in, relocated.check_in);
+    assert.equal(history[1].before.units[0].room_id, dorm.body.id);
+    assert.equal(history[1].after.units[0].room_id, room.body.id);
+    assert.notEqual(history[1].author, history[2].author);
+    assert.ok(history.every((event) => event.created_at.endsWith("Z")));
+
+    assert.equal((await request("/auth/logout", {}, "POST", receptionLogin.cookie)).status, 200);
+    const secondReception = await request("/auth/login", {
+      username: "recepcion", password: "clave-de-recepcion",
+    }, "POST", "");
+    assert.equal(secondReception.status, 200);
+    const newTurn = (await request("/cash/turns/current", undefined, "GET", secondReception.cookie)).body;
+    assert.notEqual(newTurn.id, ownTurn.id);
+    assert.deepEqual(newTurn.entries, []);
+    const previous = (await request(`/cash/turns/${ownTurn.id}`, undefined, "GET", secondReception.cookie)).body;
+    assert.ok(previous.ended_at);
+    assert.deepEqual(previous.entries, ownTurn.entries);
     assert.equal(
       (await request(`/users/${receptionist.body.id}`, { active: 0 }, "PATCH"))
         .status,
       200,
     );
     assert.equal(
-      (await request("/rooms", undefined, "GET", receptionLogin.cookie)).status,
+      (await request("/rooms", undefined, "GET", secondReception.cookie)).status,
       401,
       "desactivar usuario revoca su acceso",
     );

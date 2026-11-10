@@ -18,6 +18,7 @@ import { DollarRate } from "./components/DollarRate";
 import { Rooms } from "./modules/rooms/Rooms";
 import { Notes } from "./modules/notes/Notes";
 import { Settings } from "./modules/settings/Settings";
+import { Audit } from "./modules/settings/Audit";
 import { Folios } from "./modules/folios/Folios";
 import { FolioSheet } from "./modules/folios/FolioSheet";
 import { GuestSearch } from "./modules/reservations/GuestSearch";
@@ -40,6 +41,7 @@ const sections = [
   ] },
   { title: "Administración", pages: [
     ["settings", "Configuración", "settings"],
+    ["audit", "Auditoría", "clipboard"],
   ] },
 ];
 const descriptions: Record<string, string> = {
@@ -52,6 +54,7 @@ const descriptions: Record<string, string> = {
   cash: "Consulta los movimientos y registra los cobros de recepción.",
   pop: "Controla las existencias y registra las ventas del mostrador.",
   settings: "Organiza tus canales de reserva y tu equipo.",
+  audit: "Consulta quién hizo cada operación y qué cambió.",
 };
 const blank: Data = {
   rooms: [],
@@ -59,6 +62,7 @@ const blank: Data = {
   platforms: [],
   notes: [],
   folios: [],
+  lodgingExchangeRate: null,
 };
 
 function Auth({
@@ -189,14 +193,15 @@ export default function App() {
     draft?: Draft;
   } | null>(null);
   const refresh = useCallback(async () => {
-    const [rooms, reservations, platforms, notes, folios] = await Promise.all([
+    const [rooms, reservations, platforms, notes, folios, exchange] = await Promise.all([
       api<Data["rooms"]>("/rooms"),
       api<Data["reservations"]>("/reservations"),
       api<Data["platforms"]>("/platforms"),
       api<Data["notes"]>("/notes"),
       api<Data["folios"]>("/folios"),
+      api<{ scaled_rate: number | null }>("/lodging-exchange-rate"),
     ]);
-    setData({ rooms, reservations, platforms, notes, folios });
+    setData({ rooms, reservations, platforms, notes, folios, lodgingExchangeRate: exchange.scaled_rate });
   }, []);
   useEffect(() => {
     void api<{ setupRequired: boolean; user: User | null }>("/auth/status")
@@ -540,6 +545,7 @@ export default function App() {
           )}
           {page === "notes" && <Notes data={data} user={user} onSaved={onSaved} />}
           {page === "cash" && <Cash user={user} />}
+          {page === "audit" && user.role !== "receptionist" && <Audit />}
           {page === "breakfast" && <Breakfast reservations={data.reservations} />}
           {page === "pop" && <Pop user={user} />}
           {page === "settings" && user.role !== "receptionist" && (

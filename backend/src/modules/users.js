@@ -5,6 +5,11 @@ import { transaction } from "../core/database.js";
 
 export const canSeeSuperadmin = (user) => Number(user?.role === "superadmin");
 
+export function closeOpenTurns(db) {
+  db.prepare("UPDATE cash_turns SET closed_at=MIN(expires_at,?) WHERE closed_at IS NULL")
+    .run(new Date().toISOString());
+}
+
 const safe = (user) => ({
   id: user.id,
   name: user.name,
@@ -51,28 +56,45 @@ export function userModule(db) {
   const router = Router(),
     sessions = new Map(),
     attempts = new Map();
-  function current(req) {
-    const token = req.headers.cookie
+  // Sessions live in memory. Close any previous server's turns at restart or expiry.
+  closeOpenTurns(db);
+  const closeTurn = db.prepare("UPDATE cash_turns SET closed_at=MIN(expires_at,?) WHERE id=? AND closed_at IS NULL");
+  function tokenFrom(req) {
+    return req.headers.cookie
       ?.split(";")
       .map((s) => s.trim())
       .find((s) => s.startsWith("atatau_session="))
       ?.slice(15);
+  }
+  function current(req) {
+    const token = tokenFrom(req);
     const session = sessions.get(token);
     if (!session) return null;
-    if (session.expires < Date.now()) {
+    if (session.expires <= Date.now()) {
       sessions.delete(token);
       return null;
     }
     const user = db
       .prepare("SELECT * FROM users WHERE id=? AND active=1")
       .get(session.id);
-    return user ? safe(user) : null;
+    return user ? { ...safe(user), turnId: session.turnId } : null;
   }
-  function login(res, user) {
+  function login(req, res, user) {
+    const now = Date.now();
+    const expires = now + 12 * 3600000;
+    const previousToken = tokenFrom(req);
+    const previous = sessions.get(previousToken);
+    const startedAt = new Date(now).toISOString();
+    const turnId = transaction(db, () => {
+      if (previous) closeTurn.run(startedAt, previous.turnId);
+      return Number(db.prepare(`INSERT INTO cash_turns(user_id,user_name,started_at,expires_at)
+        VALUES(?,?,?,?)`).run(user.id, user.name, startedAt, new Date(expires).toISOString()).lastInsertRowid);
+    });
+    sessions.delete(previousToken);
     for (const [key, entry] of sessions)
       if (entry.expires < Date.now()) sessions.delete(key);
     const token = randomBytes(32).toString("hex");
-    sessions.set(token, { id: user.id, expires: Date.now() + 12 * 3600000 });
+    sessions.set(token, { id: user.id, expires, turnId });
     res.cookie("atatau_session", token, {
       httpOnly: true,
       sameSite: "strict",
@@ -81,16 +103,17 @@ export function userModule(db) {
     });
     res.json(user);
   }
-  router.get("/status", (req, res) =>
+  router.get("/status", (req, res) => {
+    const user = current(req);
     res.json({
       setupRequired: !db.prepare("SELECT id FROM users LIMIT 1").get(),
-      user: current(req),
-    }),
-  );
+      user: user ? safe(user) : null,
+    });
+  });
   router.post("/setup", (req, res) => {
     if (db.prepare("SELECT id FROM users LIMIT 1").get())
       fail("La configuración inicial ya se completó.", 409);
-    login(res, newUser(db, req.body, "superadmin"));
+    login(req, res, newUser(db, req.body, "superadmin"));
   });
   router.post("/login", (req, res) => {
     const key = req.ip;
@@ -111,14 +134,12 @@ export function userModule(db) {
       fail("Usuario o contraseña incorrectos.", 401);
     }
     attempts.delete(key);
-    login(res, safe(user));
+    login(req, res, safe(user));
   });
   router.post("/logout", (req, res) => {
-    const token = req.headers.cookie
-      ?.split(";")
-      .map((s) => s.trim())
-      .find((s) => s.startsWith("atatau_session="))
-      ?.slice(15);
+    const token = tokenFrom(req);
+    const session = sessions.get(token);
+    if (session) closeTurn.run(new Date().toISOString(), session.turnId);
     sessions.delete(token);
     res.clearCookie("atatau_session", { path: "/" });
     res.json({ ok: true });
@@ -179,8 +200,14 @@ export function userModule(db) {
         fail("Ese usuario ya existe.", 409);
       db.prepare("UPDATE users SET active=?,name=?,username=?,chat_color=? WHERE id=?")
         .run(active, name, username, color, id);
+      if (!active) db.prepare("UPDATE cash_turns SET closed_at=MIN(expires_at,?) WHERE user_id=? AND closed_at IS NULL")
+        .run(new Date().toISOString(), id);
       audit(db, req.user, "update", "user", id);
     });
+    if (!active) {
+      for (const [token, session] of sessions)
+        if (session.id === id) sessions.delete(token);
+    }
     res.json({ ok: true, user: safe(db.prepare("SELECT * FROM users WHERE id=?").get(id)) });
   });
   return { router, requireUser, admin, management };

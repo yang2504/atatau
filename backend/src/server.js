@@ -1,5 +1,6 @@
 import { createApp } from "./app.js";
 import { openDatabase } from "./core/database.js";
+import { closeOpenTurns } from "./modules/users.js";
 import { createServer } from "node:http";
 import { execFile } from "node:child_process";
 
@@ -28,6 +29,7 @@ if (process.platform === "win32" && process.argv.includes("--open"))
   execFile("explorer.exe", [address]);
 function stop() {
   server.close(() => {
+    closeOpenTurns(db);
     db.close();
     process.exit();
   });

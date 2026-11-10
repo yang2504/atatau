@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { ErrorBox, Modal } from "../../components/UI";
+import { UsdConversion } from "../../components/UsdConversion";
 import { addDays, api, daysBetween, shortDate } from "../../lib/api";
 import { lodgingTotal, normalRoomRate } from "../../lib/lodging";
 import { cents, money } from "../../lib/money";
@@ -57,6 +58,7 @@ export function ExtendStay({ reservation, room, onClose, onSaved }: {
           <input inputMode="decimal" pattern="[0-9]{1,7}([.,][0-9]{1,2})?"
             value={rate} onChange={(e) => setRate(e.target.value)} required />
         </label>
+        <UsdConversion onApply={setRate} />
         {!suggested && <p className="muted">Ingresa la tarifa normal acordada para las noches adicionales.</p>}
         {valid && priced && <div className="form-note">
           <p>{r.nightly_cents === null ? "Importes registrados hasta ahora" : "Estadía actual"} · {money(original)}</p>

@@ -25,10 +25,24 @@ function paymentDetails(body) {
 
 function insertPayment(db, user, folioId, row, { day, method }, amount, surcharge, groupId = null) {
   const result = db.prepare(`INSERT INTO folio_payments
-    (folio_id,lodging_day,service_id,day,amount_cents,method,user_id,surcharge_cents,group_id)
-    VALUES(?,?,?,?,?,?,?,?,?)`).run(folioId, row.lodging_day, row.service_id, day,
-    amount, method, user.id, surcharge, groupId);
+    (folio_id,lodging_day,service_id,day,amount_cents,method,user_id,surcharge_cents,group_id,turn_id)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`).run(folioId, row.lodging_day, row.service_id, day,
+    amount, method, user.id, surcharge, groupId, user.turnId);
   return Number(result.lastInsertRowid);
+}
+
+function paymentSnapshot(db, id, group = false) {
+  const payment = db.prepare(`SELECT id,folio_id,lodging_day,service_id,day,amount_cents,
+    method,voided,surcharge_cents,group_id,turn_id FROM folio_payments WHERE id=?`).get(id);
+  if (!group) return payment;
+  const { folio_id, lodging_day, service_id, ...receipt } = payment;
+  const applications = db.prepare(`SELECT folio_id, SUM(amount_cents) AS amount_cents
+    FROM folio_payments WHERE group_id=? GROUP BY folio_id ORDER BY folio_id`).all(id);
+  return {
+    ...receipt,
+    amount_cents: applications.reduce((sum, row) => sum + row.amount_cents, 0),
+    applications,
+  };
 }
 
 function findFolio(db, id) {
@@ -92,7 +106,7 @@ function entries(db, folio, full = 0) {
     });
 }
 
-export function ensureReservationFolios(db, reservationId, mode, sharedTitle) {
+export function ensureReservationFolios(db, reservationId, mode, sharedTitle, user) {
   if (db.prepare("SELECT 1 FROM folios WHERE reservation_id=? LIMIT 1").get(reservationId)) return;
   if (mode === "shared") {
     db.prepare("INSERT INTO folios(reservation_id,guest_id,title) VALUES(?,NULL,?)")
@@ -101,6 +115,8 @@ export function ensureReservationFolios(db, reservationId, mode, sharedTitle) {
     db.prepare(`INSERT INTO folios(reservation_id,guest_id,title)
       SELECT reservation_id,id,name FROM guests WHERE reservation_id=? ORDER BY id`).run(reservationId);
   }
+  for (const folio of db.prepare("SELECT * FROM folios WHERE reservation_id=? ORDER BY id").all(reservationId))
+    audit(db, user, "create", "folio", folio.id, null, folio);
 }
 
 export function recordStayPayment(db, reservationId, body, user, expectedBalance = null) {
@@ -129,7 +145,7 @@ export function recordStayPayment(db, reservationId, body, user, expectedBalance
     }
     remaining -= applied;
   }
-  audit(db, user, "create_stay_payment", "folio_payment", groupId);
+  audit(db, user, "create_stay_payment", "folio_payment", groupId, null, paymentSnapshot(db, groupId, true));
   return groupId;
 }
 
@@ -156,7 +172,9 @@ export function folioModule(db) {
   const router = Router();
   router.get("/", (req, res) => {
     const rows = db.prepare(`
-      SELECT listed.*,room.name AS room_name,room.type AS room_type,
+      SELECT listed.*,room.id AS room_id,room.name AS room_name,room.type AS room_type,
+        (SELECT json_group_array(DISTINCT substr(s.day,1,7)) FROM folio_services s
+          WHERE s.folio_id=listed.id) AS service_months,
         (SELECT json_group_array(DISTINCT substr(p.day,1,7)) FROM folio_payments p
           JOIN folios sibling ON sibling.id=p.folio_id WHERE sibling.reservation_id=listed.reservation_id) AS paid_months
       FROM (${folioQuery}) listed
@@ -173,7 +191,9 @@ export function folioModule(db) {
       )
       ORDER BY listed.check_in DESC,listed.id DESC
     `).all();
-    res.json(rows.map((row) => ({ ...row, paid_months: JSON.parse(row.paid_months) })));
+    res.json(rows.map((row) => ({
+      ...row, paid_months: JSON.parse(row.paid_months), service_months: JSON.parse(row.service_months),
+    })));
   });
   router.get("/:id", (req, res) => {
     const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
@@ -203,7 +223,9 @@ export function folioModule(db) {
           .run(folio.id, day, service, detail, total, req.user.id)
           .lastInsertRowid,
       );
-      audit(db, req.user, "create", "folio_service", id);
+      audit(db, req.user, "create", "folio_service", id, null, {
+        folio_id: folio.id, day, service, detail, total_cents: total,
+      });
       return id;
     });
     res.status(201).json({ id });
@@ -237,7 +259,7 @@ export function folioModule(db) {
       if (amount > row.balance_cents)
         fail("El abono supera el saldo del cargo.", 409);
       const id = insertPayment(db, req.user, folio.id, row, details, amount, surcharge);
-      audit(db, req.user, "create", "folio_payment", id);
+      audit(db, req.user, "create", "folio_payment", id, null, paymentSnapshot(db, id));
       return id;
     });
     res.status(201).json({ id, cash_cents: amount, surcharge_cents: surcharge, collected_cents: amount + surcharge });
@@ -249,10 +271,11 @@ export function folioModule(db) {
     const paymentId = integer(Number(req.params.paymentId), "Abono");
     transaction(db, () => {
       activePayment(db, folioId, paymentId, group);
+      const before = paymentSnapshot(db, paymentId, group);
       db.prepare(group
         ? "UPDATE folio_payments SET voided=1 WHERE group_id=?"
         : "UPDATE folio_payments SET voided=1 WHERE id=?").run(paymentId);
-      audit(db, req.user, "void", "folio_payment", paymentId);
+      audit(db, req.user, "void", "folio_payment", paymentId, before, paymentSnapshot(db, paymentId, group));
     });
     res.json({ ok: true });
   }
@@ -264,11 +287,15 @@ export function folioModule(db) {
     const id = transaction(db, () => {
       const payment = activePayment(db, folioId, paymentId, group);
       const folio = findFolio(db, folioId);
+      const before = paymentSnapshot(db, paymentId, group);
       db.prepare(group
         ? "UPDATE folio_payments SET voided=1 WHERE group_id=?"
         : "UPDATE folio_payments SET voided=1 WHERE id=?").run(paymentId);
-      audit(db, req.user, "replace", "folio_payment", paymentId);
-      if (group) return recordStayPayment(db, folio.reservation_id, req.body, req.user);
+      if (group) {
+        const replacement = recordStayPayment(db, folio.reservation_id, req.body, req.user);
+        audit(db, req.user, "replace", "folio_payment", paymentId, before, paymentSnapshot(db, replacement, true));
+        return replacement;
+      }
       const details = paymentDetails(req.body);
       const amount = integer(req.body.amount_cents, "Abono", 1, MAX_NIGHTLY_CENTS);
       const row = entries(db, folio).find((row) =>
@@ -278,7 +305,9 @@ export function folioModule(db) {
         amount === payment.amount_cents && details.method === payment.method
           ? payment.surcharge_cents
           : cardSurcharge(amount, details.method));
-      audit(db, req.user, "create", "folio_payment", replacement);
+      const after = paymentSnapshot(db, replacement);
+      audit(db, req.user, "create", "folio_payment", replacement, null, after);
+      audit(db, req.user, "replace", "folio_payment", paymentId, before, after);
       return replacement;
     });
     res.json({ id });

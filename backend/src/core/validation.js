@@ -26,8 +26,11 @@ export function date(value) {
     fail("Fecha inexistente.");
   return value;
 }
-export function audit(db, user, action, entity, id) {
+export function audit(db, user, action, entity, id, before = null, after = null) {
   db.prepare(
-    "INSERT INTO audit_log(user_id,action,entity,entity_id) VALUES(?,?,?,?)",
-  ).run(user.id, action, entity, id);
+    `INSERT INTO audit_log(user_id,action,entity,entity_id,actor_name,before_json,after_json)
+     VALUES(?,?,?,?,?,?,?)`,
+  ).run(user.id, action, entity, id, user.name,
+    before === null ? null : JSON.stringify(before),
+    after === null ? null : JSON.stringify(after));
 }

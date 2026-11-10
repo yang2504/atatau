@@ -6,6 +6,12 @@ export type User = {
   active: number;
   chat_color: string | null;
 };
+export type BcbRate = {
+  quote: { rate: string; valid_until: string; fetched_at: string } | null;
+  source: string;
+  unavailable: boolean;
+  lodging_rate: { scaled_rate: number; source: "bcb" | "manual" } | null;
+};
 export type Unit = {
   id: number;
   room_id: number;
@@ -34,8 +40,10 @@ export type Reservation = {
   platform_name: string;
   status: "pending" | "confirmed" | "in_house" | "checked_out" | "cancelled";
   breakfast: number;
+  created_by_name: string;
   checked_in_by_name: string | null;
   checked_in_at: string | null;
+  checked_out_by_name: string | null;
   lodging_paid_cents: number;
   folio_mode: "shared" | "individual";
   folio_holder: string;
@@ -80,7 +88,9 @@ export type Folio = {
   arrival_time: string;
   room_name: string | null;
   room_type: Room["type"] | null;
+  room_id: number | null;
   paid_months: string[];
+  service_months: string[];
 };
 export type Payment = {
   id: number;
@@ -111,5 +121,6 @@ export type Data = {
   platforms: Platform[];
   notes: Note[];
   folios: Folio[];
+  lodgingExchangeRate: number | null;
 };
 export type Draft = { unit_id?: number; check_in?: string; check_out?: string };

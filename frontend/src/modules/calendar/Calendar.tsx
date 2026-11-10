@@ -8,6 +8,7 @@ import {
   today,
 } from "../../lib/api";
 import { Icon, Empty } from "../../components/UI";
+import { reservationStaff } from "../reservations/ReservationStaff";
 
 export function Calendar({
   data,
@@ -286,6 +287,12 @@ export function Calendar({
                                   : "Con saldo";
                           };
                           const extendable = unit.active && r.unit_ids[0] === unit.id && r.status !== "checked_out";
+                          const staff = reservationStaff(r);
+                          const responsible = staff[r.status === "checked_out" ? 2 : r.status === "in_house" ? 1 : 0];
+                          const initials = responsible.name?.split(/\s+/).slice(0, 2)
+                            .map((part) => [...part][0]).join("").toLocaleUpperCase("es-BO");
+                          const staffDetail = staff.filter(({ name }) => name)
+                            .map(({ label, name }) => `${label}: ${name}`).join(" · ");
                           const colors = visibleNights.map((day) => {
                             const status = paymentStatus(day);
                             return status === "Pagada"
@@ -304,7 +311,7 @@ export function Calendar({
                             <Fragment key={r.id}>
                             <button
                               draggable={!!unit.active}
-                              className={`reservation-block ${r.status}${extendable ? " can-extend" : ""}`}
+                              className={`reservation-block ${r.status}${extendable ? " can-extend" : ""}${right - left === 1 ? " single-night" : ""}`}
                               style={{
                                 gridColumn: `${left + 2} / ${right + 2}`,
                                 background:
@@ -323,7 +330,8 @@ export function Calendar({
                                 );
                                 e.dataTransfer.effectAllowed = "move";
                               }}
-                              title={`${r.guest_name} · ${statusNames[r.status]} · ${r.pax} PAX\n${visibleNights.map((day) => `${shortDate(day)}: ${paymentStatus(day)}`).join("\n")}`}
+                              aria-label={`${r.guest_name} · ${statusNames[r.status]} · ${r.pax} PAX${staffDetail ? ` · ${staffDetail}` : ""}`}
+                              title={`${r.guest_name} · ${statusNames[r.status]} · ${r.pax} PAX\n${staffDetail}\n${visibleNights.map((day) => `${shortDate(day)}: ${paymentStatus(day)}`).join("\n")}`}
                             >
                               <span className="reservation-avatar">
                                 <Icon name={room.type === "private" && r.pax > 1 ? "users" : "person"} size={15} />
@@ -331,8 +339,8 @@ export function Calendar({
                               <span>
                                 <strong>{r.guest_name}</strong>
                                 <small>
-                                  {room.type === "dorm" ? "1 cama" : `${r.pax} PAX`}
-                                  {r.status === "pending" && " · Pendiente"}
+                                  {initials ? <span className="reservation-initials">{responsible.code}·{initials}</span>
+                                    : room.type === "dorm" ? "1 cama" : `${r.pax} PAX`}
                                 </small>
                               </span>
                             </button>
@@ -358,6 +366,7 @@ export function Calendar({
       <div className="calendar-footer">
         <div className="legend">
           <span>＋ Alargar estadía</span>
+          <span>R Reserva · E Entrada · S Salida</span>
           <span><i className="legend-dot pending" /> Reserva pendiente</span>
           <span>
             <i className="legend-dot night-paid" />

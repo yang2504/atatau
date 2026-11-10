@@ -1,6 +1,6 @@
 import express from "express";
 import { fileURLToPath } from "node:url";
-import { userModule } from "./modules/users.js";
+import { canSeeSuperadmin, userModule } from "./modules/users.js";
 import { roomModule } from "./modules/rooms.js";
 import { reservationModule } from "./modules/reservations.js";
 import { platformModule } from "./modules/platforms.js";
@@ -9,6 +9,8 @@ import { folioModule } from "./modules/folios.js";
 import { cashModule } from "./modules/cash.js";
 import { popModule } from "./modules/pop.js";
 import { bcbRateHandler } from "./modules/bcb.js";
+import { audit, integer } from "./core/validation.js";
+import { transaction } from "./core/database.js";
 
 export function createApp(db) {
   const app = express();
@@ -55,6 +57,32 @@ export function createApp(db) {
   app.use("/api/auth", users.router);
   app.use("/api", users.requireUser);
   app.get("/api/bcb/usd", bcbRateHandler(db));
+  const getRate = db.prepare("SELECT scaled_rate FROM lodging_exchange_rate WHERE id=1");
+  app.get("/api/lodging-exchange-rate", (req, res) => res.json(getRate.get() ?? { scaled_rate: null }));
+  app.put("/api/lodging-exchange-rate", users.admin, (req, res) => {
+    const scaled_rate = integer(req.body.scaled_rate, "Tipo de cambio", 1, 10_000_000);
+    transaction(db, () => {
+      const before = getRate.get() ?? null;
+      db.prepare(`INSERT INTO lodging_exchange_rate(id,scaled_rate) VALUES(1,?)
+        ON CONFLICT(id) DO UPDATE SET scaled_rate=excluded.scaled_rate`).run(scaled_rate);
+      audit(db, req.user, "update", "lodging_exchange_rate", 1, before, { scaled_rate });
+    });
+    res.json({ scaled_rate });
+  });
+  app.get("/api/audit", users.admin, (req, res) => {
+    const before = req.query.before === undefined ? Number.MAX_SAFE_INTEGER :
+      integer(Number(req.query.before), "Registro", 1, Number.MAX_SAFE_INTEGER);
+    const rows = db.prepare(`SELECT a.id,a.created_at,a.action,a.entity,a.entity_id,
+        a.before_json,a.after_json,
+        CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE COALESCE(a.actor_name,u.name) END AS author
+      FROM audit_log a JOIN users u ON u.id=a.user_id
+      WHERE a.id<? AND a.entity IN ('reservation','folio','folio_service','folio_payment',
+        'cash_entry','pop_movement','lodging_exchange_rate')
+      ORDER BY a.id DESC LIMIT 50`).all(canSeeSuperadmin(req.user), before);
+    res.json(rows.map(({ before_json, after_json, ...row }) => ({
+      ...row, before: JSON.parse(before_json), after: JSON.parse(after_json),
+    })));
+  });
   app.use("/api/users", users.management);
   app.use("/api/rooms", roomModule(db, users.admin));
   app.use("/api/reservations", reservationModule(db));

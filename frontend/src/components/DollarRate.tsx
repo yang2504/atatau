@@ -1,12 +1,7 @@
 import { useState } from "react";
-import { api, today } from "../lib/api";
-import { Modal } from "./UI";
-
-type BcbRate = {
-  quote: { rate: string; valid_until: string; fetched_at: string } | null;
-  source: string;
-  unavailable: boolean;
-};
+import { api, localDateTime, shortDate, today } from "../lib/api";
+import type { BcbRate } from "../lib/types";
+import { Icon, Modal } from "./UI";
 
 export function DollarRate() {
   const [open, setOpen] = useState(false);
@@ -16,6 +11,7 @@ export function DollarRate() {
 
   async function consult() {
     setBusy(true);
+    setError("");
     setError("");
     try {
       setResult(await api<BcbRate>("/bcb/usd"));
@@ -27,25 +23,36 @@ export function DollarRate() {
   }
 
   const quote = result?.quote;
-  const expires = quote?.valid_until;
+  const expired = !!quote && quote.valid_until < today();
   return <>
     <button type="button" className="button secondary compact"
       onClick={() => { setOpen(true); void consult(); }}>Dólar BCB</button>
     {open && <Modal title="Dólar oficial del BCB" onClose={() => setOpen(false)}>
       <div className="form-stack">
-        {quote && <div className="form-note">
-          <strong>1 USD = {Number(quote.rate).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 4 })} Bs</strong>
-          <p>{expires && expires < today() ? "Vigencia vencida" : "Vigente hasta"} · {quote.valid_until}</p>
-          <p>Consultado · {new Date(quote.fetched_at).toLocaleString("es-BO", { timeZone: "America/La_Paz" })}</p>
-        </div>}
+        {quote && <>
+          <div className="bcb-quote">
+            <div className="bcb-quote-label"><Icon name="cash" /> Tipo de cambio oficial</div>
+            <p className="bcb-quote-value">
+              <strong>Bs {Number(quote.rate).toLocaleString("es-BO", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</strong>
+              <span>por 1 dólar estadounidense</span>
+            </p>
+            <span className={expired ? "bcb-badge expired" : "bcb-badge"}>
+              {expired ? "Vigencia vencida" : "Vigente"}{result?.unavailable && " · Dato guardado"}
+            </span>
+          </div>
+          <dl className="bcb-metadata">
+            <div><dt>{expired ? "Venció el" : "Vigente hasta"}</dt><dd>{shortDate(quote.valid_until, true)}</dd></div>
+            <div><dt>Última consulta exitosa</dt><dd>{localDateTime(quote.fetched_at)}</dd></div>
+          </dl>
+        </>}
         {busy && <p role="status">Consultando al Banco Central de Bolivia…</p>}
-        {!busy && result?.unavailable && <p role="status">
+        {!busy && result?.unavailable && <p className="form-note" role="status">
           {quote ? "El BCB no se pudo actualizar. Se muestra el último dato guardado." : "El BCB no está disponible y todavía no hay una cotización guardada."}
         </p>}
         {error && <p role="alert">{error}</p>}
         <div className="row-actions">
-          <button type="button" className="button secondary compact" disabled={busy} onClick={() => void consult()}>Consultar de nuevo</button>
-          <a href={result?.source ?? "https://www.bcb.gob.bo/index.php"} target="_blank" rel="noreferrer">Ver publicación del BCB</a>
+          <button type="button" className="button primary compact" disabled={busy} onClick={() => void consult()}>Consultar de nuevo</button>
+          <a className="text-button" href={result?.source ?? "https://www.bcb.gob.bo/index.php"} target="_blank" rel="noreferrer">Ver publicación del BCB</a>
         </div>
       </div>
     </Modal>}
