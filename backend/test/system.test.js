@@ -424,6 +424,7 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal(manualCard.body.collected_cents, 1050);
     assert.equal(manualCard.body.cash_cents, 1000);
     assert.equal((await request("/cash", { ...manual, method: "QR" })).body.collected_cents, 1000);
+    assert.equal((await request("/cash", { ...manual, cash_box: "pub" })).status, 400);
     assert.equal((await request("/cash", { ...manual, day: "2000-01-01" }, "POST", receptionLogin.cookie)).status, 403);
     const expense = { ...manual, kind: "expense", detail: "Insumos" };
     assert.equal((await request("/cash", expense, "POST", receptionLogin.cookie)).status, 403);
@@ -435,7 +436,8 @@ test("reservas, permisos y persistencia transaccional", async () => {
     db.prepare("UPDATE folio_payments SET surcharge_cents=250 WHERE id=?").run(qr.body.id);
     const historic = (await request("/cash/monthly?month=2026-11")).body;
     assert.ok(historic.some((row) => row.source === "folio" && row.id === qr.body.id
-      && row.surcharge_cents === 250 && row.cash_cents === 5000));
+      && row.surcharge_cents === 250 && row.cash_cents === 5000 && row.physical_cents === 0));
+    assert.ok(!(await request("/cash/monthly?month=2026-11&box=pub")).body.some((row) => row.source === "folio"));
     assert.ok(historic.some((row) => row.source === "folio" && row.id === remainder.body.id && row.voided === 1));
 
     const product = await request("/pub", { name: "Powerade", price_cents: 1500 });
@@ -444,26 +446,29 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const arrival = { kind: "in", quantity: 2, detail: "Reposición" };
     assert.equal((await request(movements, arrival, "POST", receptionLogin.cookie)).status, 403);
     assert.equal((await request(movements, arrival)).body.stock, 2);
-    const sale = { kind: "sale", quantity: 2, method: "Tarjeta", base_cents: 3000 };
+    const sale = { kind: "sale", quantity: 2, method: "Tarjeta", base_cents: 3000, cash_box: "petty" };
     assert.equal((await request(movements, { ...sale, base_cents: 100 }, "POST", receptionLogin.cookie)).status, 409);
     assert.equal((await request(movements, sale, "POST", receptionLogin.cookie)).body.collected_cents, 3150);
     assert.equal((await request(movements, sale, "POST", receptionLogin.cookie)).status, 409);
     assert.equal((await request("/pop")).body[0].stock, 0);
     const daily = (await request("/cash/daily", undefined, "GET", receptionLogin.cookie)).body;
     const pubDaily = (await request("/cash/daily?box=pub", undefined, "GET", receptionLogin.cookie)).body;
-    assert.ok(pubDaily.some((row) => row.source === "pop" && row.surcharge_cents === 150 && row.cash_cents === 3000));
+    assert.ok(pubDaily.some((row) => row.source === "pop" && row.surcharge_cents === 150
+      && row.cash_cents === 3000 && row.physical_cents === 0));
     assert.ok(daily.every((row) => row.cash_box === "petty" && row.source !== "pop"));
     assert.ok(daily.some((row) => row.source === "manual" && row.id === manualCard.body.id
       && row.surcharge_cents === 50 && row.cash_cents === 1000));
     assert.ok(daily.every((row) => row.kind === "income"));
-    const pubExpense = await request("/cash", { ...expense, cash_box: "pub" });
+    const pubExpense = await request("/cash", { ...expense, method: "Efectivo", cash_box: "pub" });
     assert.equal(pubExpense.status, 201);
-    assert.ok((await request(monthPath + "&box=pub")).body.some((row) => row.kind === "expense" && row.id === pubExpense.body.id));
+    assert.ok((await request(monthPath + "&box=pub")).body.some((row) => row.kind === "expense"
+      && row.id === pubExpense.body.id && row.physical_cents === 1000));
     assert.ok(!(await request(monthPath)).body.some((row) => row.source === "manual" && row.id === pubExpense.body.id));
     assert.equal((await request("/cash/daily?box=otro")).status, 400);
     const ownTurn = (await request("/cash/turns/current", undefined, "GET", receptionLogin.cookie)).body;
     assert.deepEqual(ownTurn.entries.map((row) => [row.source, row.id]), [["manual", manualCard.body.id]]);
     assert.ok(ownTurn.entries[0].recorded_at);
+    assert.equal(ownTurn.entries[0].physical_cents, 0);
     assert.equal((await request("/cash/turns/current?box=pub", undefined, "GET", receptionLogin.cookie)).body.entries.length, 1);
     const ownerTurn = (await request("/cash/turns/current")).body;
     assert.equal((await request(`/cash/turns/${ownerTurn.id}`, undefined, "GET", receptionLogin.cookie)).status, 404);
@@ -549,8 +554,11 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal(otherDetail.stay_payments[0].id, receipt.id);
     assert.ok(otherDetail.entries.every((row) => row.balance_cents === 0 && row.payments.length === 0));
     assert.deepEqual((await request("/cash/daily")).body.filter((row) => row.source === "stay").map((row) => row.cash_cents), [20102, 100]);
+    assert.ok(!(await request("/cash/daily?box=pub")).body.some((row) => row.source === "stay"));
     assert.deepEqual((await adminRequest("/cash/turns/current")).body.entries
       .filter((row) => row.source === "stay").map((row) => row.cash_cents), [20102]);
+    assert.equal((await adminRequest("/cash/turns/current")).body.entries
+      .find((row) => row.source === "stay").physical_cents, 0);
     const checkInEvents = (await adminRequest("/audit")).body.filter((event) =>
       event.entity === "reservation" && event.entity_id === booking.body.id && event.action === "check_in");
     assert.equal(checkInEvents.length, 1);

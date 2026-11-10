@@ -11,7 +11,8 @@ type Entry = {
   day: string;
   kind: "income" | "expense";
   detail: string;
-  cash_cents: number;
+  base_cents: number;
+  physical_cents: number;
   surcharge_cents: number;
   method: string;
   author: string;
@@ -26,8 +27,11 @@ export function Cash({ user }: { user: User }) {
   const [box, setBox] = useState<"petty" | "pub">("petty");
   const boxLabel = box === "pub" ? "Caja Pub" : "Caja Chica";
   const [view, setView] = useState("current");
+  const [movementFilter, setMovementFilter] = useState<"all" | Entry["kind"]>("all");
   const [month, setMonth] = useState(today().slice(0, 7));
   const [kind, setKind] = useState("income");
+  const movementKind = box === "pub" ? "expense" : kind;
+  const showForm = view === "current" && (box === "petty" || admin);
   const [method, setMethod] = useState("Efectivo");
   const [amount, setAmount] = useState("");
   const [entries, setEntries] = useState<Entry[] | null>(null);
@@ -80,9 +84,22 @@ export function Cash({ user }: { user: User }) {
     return () => { active = false; };
   }, [path, version]);
   const base = /^\d{1,7}([.,]\d{1,2})?$/.test(amount) ? cents(amount) : 0;
-  const total = (kind: Entry["kind"]) => (entries ?? []).reduce(
-    (sum, row) => row.kind === kind && !row.voided ? sum + row.cash_cents : sum, 0,
-  );
+  const incomeByMethod = new Map<string, number>();
+  let cashIncome = 0;
+  let cashExpenses = 0;
+  let otherExpenses = 0;
+  for (const row of entries ?? []) {
+    if (row.voided) continue;
+    if (row.kind === "income") {
+      cashIncome += row.physical_cents;
+      incomeByMethod.set(row.method, (incomeByMethod.get(row.method) ?? 0) + row.base_cents);
+    } else {
+      cashExpenses += row.physical_cents;
+      otherExpenses += row.base_cents - row.physical_cents;
+    }
+  }
+  const visibleEntries = entries?.filter((row) => movementFilter === "all" || row.kind === movementFilter);
+  const total = (amount: number) => entries ? money(amount) : "—";
   function switchBox(next: typeof box) {
     if (box === next) return;
     setEntries(null);
@@ -97,7 +114,7 @@ export function Cash({ user }: { user: User }) {
     setBusy(true);
     setError("");
     try {
-      await api("/cash", { day: values.get("day") ?? today(), detail: values.get("detail"), kind, method, base_cents: cents(amount), cash_box: box });
+      await api("/cash", { day: values.get("day") ?? today(), detail: values.get("detail"), kind: movementKind, method, base_cents: cents(amount), cash_box: box });
       form.reset();
       setAmount("");
       setVersion((v) => v + 1);
@@ -136,10 +153,13 @@ export function Cash({ user }: { user: User }) {
       </>}
     </div>
     <ErrorBox message={error} />
-    <div className={view === "current" ? "content-columns operations-layout" : undefined}>
+    <div className={showForm ? "content-columns operations-layout" : undefined}>
       <section className="panel">
         <div className="section-toolbar">
-          <h2>{boxLabel} · {byTurn ? (turn ? `Turno #${turn.id}` : "Turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
+          <div>
+            <h2>{boxLabel} · {byTurn ? (turn ? `Turno #${turn.id}` : "Turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
+            <p className="muted">{box === "pub" ? "Las ventas se registran desde Inventario Pub." : "Los abonos de huéspedes llegan desde Hojas de consumo."}</p>
+          </div>
           {view === "monthly" && <input type="month" aria-label="Mes del cuaderno" value={month} onChange={(e) => { if (e.target.value) setMonth(e.target.value); }} />}
         </div>
         {view === "history" && <div className="row-actions turn-meta">
@@ -155,22 +175,44 @@ export function Cash({ user }: { user: User }) {
         {turn && <p className="muted turn-meta">
           {turn.author} · Apertura {localDateTime(turn.started_at)} · {turn.ended_at ? `Cierre ${localDateTime(turn.ended_at)}` : "Turno abierto"}
         </p>}
-        <div className="ledger-totals">
-          {byTurn && <span>Saldo inicial <strong>{money(0)}</strong></span>}
-          <span>Ingresos <strong>{entries ? money(total("income")) : "—"}</strong></span>
-          <span>Egresos <strong>{entries ? money(total("expense")) : "—"}</strong></span>
-          <span>Neto de caja <strong>{entries ? money(total("income") - total("expense")) : "—"}</strong></span>
+        <section className="ledger-summary" aria-label="Efectivo en caja">
+          <h3>Efectivo en caja</h3>
+          <div className="ledger-totals">
+            <span>Ingresos en efectivo <strong>{total(cashIncome)}</strong></span>
+            <span className="ledger-expenses">Egresos en efectivo <strong>{total(cashExpenses)}</strong></span>
+            <span className="ledger-net">Neto en efectivo <strong>{total(cashIncome - cashExpenses)}</strong></span>
+          </div>
+          {byTurn && <p className="muted">Saldo inicial del turno · {money(0)}</p>}
+        </section>
+        <section className="ledger-summary ledger-other" aria-label="Movimientos fuera del efectivo">
+          <h3>Fuera del efectivo</h3>
+          <div className="ledger-totals">
+            {["QR", "Tarjeta", "Transferencia", "Otro"].map((medium) => <span key={medium}>
+              Ingresos por {medium === "Otro" ? "otros medios" : medium}
+              <strong>{total(incomeByMethod.get(medium) ?? 0)}</strong>
+            </span>)}
+            <span className="ledger-expenses">Egresos fuera del efectivo <strong>{total(otherExpenses)}</strong></span>
+          </div>
+          <p className="muted">Importes base. Los recargos figuran en cada movimiento.</p>
+        </section>
+        <div className="tabs ledger-tabs" role="group" aria-label="Tipo de movimiento">
+          {([["all", "Todos"], ["income", "Ingresos"], ["expense", "Egresos"]] as const).map(([value, label]) =>
+            <button key={value} className={movementFilter === value ? "active" : ""}
+              aria-pressed={movementFilter === value} onClick={() => setMovementFilter(value)}>{label}</button>)}
         </div>
         {!entries && !error && <p className="quiet-state" role="status">Cargando movimientos…</p>}
-        {entries?.length === 0 && <p className="quiet-state">Aún no hay movimientos en este período.</p>}
-        {!!entries?.length && <div className="table-scroll">
+        {visibleEntries?.length === 0 && <p className="quiet-state">{entries?.length ? "No hay movimientos de este tipo." : "Aún no hay movimientos en este período."}</p>}
+        {!!visibleEntries?.length && <div className="table-scroll">
           <table>
-            <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe en caja</th>{admin && <th>Acción</th>}</tr></thead>
-            <tbody>{entries.map((row) => <tr key={`${row.source}-${row.id}`} className={row.voided ? "void-row" : ""}>
+            <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe base</th>{admin && <th>Acción</th>}</tr></thead>
+            <tbody>{visibleEntries.map((row) => <tr key={`${row.source}-${row.id}`} className={row.voided ? "void-row" : row.kind === "expense" ? "ledger-expense-row" : undefined}>
               <td>{shortDate(row.day, byTurn)}{row.recorded_at && <small className="cell-sub">Registro {localDateTime(row.recorded_at)}</small>}</td>
-              <td><strong>{row.detail}</strong><small className="cell-sub">{sources[row.source]} · {row.author}{row.voided ? " · Anulado" : ""}</small></td>
+              <td><span className={`tag ledger-kind ${row.kind}`}>{row.kind === "expense" ? "Egreso" : "Ingreso"}</span>
+                <strong>{row.detail}</strong><small className="cell-sub">
+                  {box === "pub" && row.source === "manual" && row.kind === "income" ? "Ingreso manual histórico" : sources[row.source]}
+                  {" · "}{row.author}{row.voided ? " · Anulado" : ""}</small></td>
               <td>{row.method}</td>
-              <td>{row.kind === "expense" ? "−" : ""}{money(row.cash_cents)}
+              <td><strong>{row.kind === "expense" ? "−" : "+"}{money(row.base_cents)}</strong>
                 {row.surcharge_cents > 0 && <small className="cell-sub">
                   {row.method === "Tarjeta" ? "Comisión descontada" : "Recargo histórico"} {money(row.surcharge_cents)}
                 </small>}
@@ -180,18 +222,17 @@ export function Cash({ user }: { user: User }) {
           </table>
         </div>}
       </section>
-      {view === "current" && <section className="panel side-form">
-        <h2>{admin ? "Nuevo movimiento" : "Registrar ingreso"} · {boxLabel}</h2>
-        <p className="muted">{box === "pub" ? "Las ventas de Inventario Pub entran aquí automáticamente." : "Los abonos de huéspedes entran aquí automáticamente."}</p>
+      {showForm && <section className="panel side-form">
+        <h2>{box === "pub" ? "Registrar egreso" : admin ? "Nuevo movimiento" : "Registrar ingreso"} · {boxLabel}</h2>
         <form className="form-stack" onSubmit={record}>
-          {admin && <><label>Fecha<input type="date" name="day" defaultValue={today()} required /></label>
-          <label>Tipo<select value={kind} onChange={(e) => setKind(e.target.value)}>
+          {admin && <label>Fecha<input type="date" name="day" defaultValue={today()} required /></label>}
+          {admin && box === "petty" && <label>Tipo<select value={kind} onChange={(e) => setKind(e.target.value)}>
             <option value="income">Ingreso</option><option value="expense">Egreso</option>
-          </select></label></>}
+          </select></label>}
           <label>Concepto<input name="detail" placeholder="Ej. Compra de insumos" maxLength={160} required /></label>
           <label>Importe base (Bs)<input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" pattern="[0-9]{1,7}([.,][0-9]{1,2})?" required /></label>
           <label>Medio de pago<select value={method} onChange={(e) => setMethod(e.target.value)}>{paymentMethods.map((item) => <option key={item}>{item}</option>)}</select></label>
-          {kind === "income" && method === "Tarjeta" && <CardCharge base={base} />}
+          {movementKind === "income" && method === "Tarjeta" && <CardCharge base={base} />}
           <button className="button primary" disabled={busy}><Icon name="plus" size={16} /> Registrar</button>
         </form>
       </section>}

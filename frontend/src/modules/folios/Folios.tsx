@@ -14,20 +14,22 @@ export function Folios({
   const [month, setMonth] = useState(() => today().slice(0, 7));
   const [allMonths, setAllMonths] = useState(false);
   const [type, setType] = useState<"private" | "dorm">("private");
-  const [roomId, setRoomId] = useState("");
+  const [roomId, setRoomId] = useState<number | null>(null);
   const byId = new Map(
     data.reservations.map((reservation) => [reservation.id, reservation]),
   );
   const monthly = data.folios.filter((f) =>
-    (!roomId || String(f.room_id) === roomId) &&
     (allMonths || (f.check_in.slice(0, 7) <= month && f.check_out > month + "-01") ||
       f.paid_months.includes(month) || f.service_months.includes(month)) &&
     (query.trim().replace(/^#/, "") === String(f.reservation_id) ||
       folioMatches(query, f, byId.get(f.reservation_id))),
   );
-  const folios = monthly.filter((f) => (f.room_type ?? "private") === type);
+  const byType = monthly.filter((f) => (f.room_type ?? "private") === type);
+  const historicalRooms = new Set(data.folios.map((folio) => folio.room_id));
+  const roomTabs = data.rooms.filter((room) => room.type === type && (room.active || historicalRooms.has(room.id)));
+  const folios = roomId === null ? byType : byType.filter((f) => f.room_id === roomId);
   function changeType(next: typeof type) {
-    if (next !== type) setRoomId("");
+    if (next !== type) setRoomId(null);
     setType(next);
   }
   return (
@@ -40,17 +42,6 @@ export function Folios({
           </p>
         </div>
         <div className="row-actions">
-          <label>Habitación
-            <select aria-label="Habitación" value={roomId} onChange={(e) => {
-              const id = e.target.value;
-              setRoomId(id);
-              const room = data.rooms.find((item) => String(item.id) === id);
-              if (room) setType(room.type);
-            }}>
-              <option value="">Todas las habitaciones</option>
-              {data.rooms.map((room) => <option value={room.id} key={room.id}>{room.name}</option>)}
-            </select>
-          </label>
           <label>Mes de las hojas <input type="month" value={month} disabled={allMonths}
             onChange={(e) => { if (e.target.value) setMonth(e.target.value); }} /></label>
           <label className="check-option"><input type="checkbox" checked={allMonths}
@@ -72,6 +63,17 @@ export function Folios({
           aria-pressed={type === "dorm"} onClick={() => changeType("dorm")}>
           Dormitorios · {monthly.filter((f) => f.room_type === "dorm").length}
         </button>
+      </div>
+      <div className="tabs folio-room-tabs" aria-label="Habitaciones" role="group">
+        <button type="button" className={roomId === null ? "active" : ""}
+          aria-pressed={roomId === null} onClick={() => setRoomId(null)}>
+          {type === "dorm" ? "Todos los dormitorios" : "Todas las privadas"} · {byType.length}
+        </button>
+        {roomTabs.map((room) => <button key={room.id} type="button"
+          className={roomId === room.id ? "active" : ""} aria-pressed={roomId === room.id}
+          onClick={() => setRoomId(room.id)}>
+          {room.name}{!room.active && " (inactiva)"} · {byType.filter((folio) => folio.room_id === room.id).length}
+        </button>)}
       </div>
       {!folios.length ? (
         <Empty

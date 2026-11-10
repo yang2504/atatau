@@ -1,5 +1,18 @@
 # Cambios y decisiones importantes
 
+## 2026-11-10 — Separación de Caja Chica y Caja Pub
+
+- Los cobros de hospedaje y abonos de las hojas se registran en Caja Chica. Caja Pub recibe ingresos nuevos solo desde las ventas del inventario y admite sus propios egresos administrativos. Los ingresos manuales anteriores de Caja Pub quedan identificados como históricos.
+- La versión 1.7.0 incluye esta regla, las pestañas de habitaciones, el resumen por medio de pago y el calendario con dos días previos a hoy. Se reutiliza el esquema existente.
+- Pasaron `npm test`, `npm run check` y `npm run build`. Con el ZIP de Windows y una base temporal se comprobó que los abonos por QR y tarjeta se ven en Caja Chica y que la venta y el egreso del Pub se ven en Caja Pub.
+
+## 2026-11-10 — Pestañas de habitaciones, efectivo y calendario
+
+- Hojas de consumo usa pestañas por habitación dentro de privadas y dormitorios. La vista de todas conserva los filtros de huésped, reserva y mes.
+- El neto físico de cada caja se calcula solo con efectivo. Se muestran ingresos por QR, tarjeta, transferencia y otros medios, al importe base. Los egresos tienen etiqueta, importe negativo y filtro propio. Los cobros de hojas y ventas Pub siguen entrando automáticamente al registro correspondiente.
+- El calendario abre dos días antes de hoy y el botón **Hoy** restablece esa vista. La columna de hoy sigue resaltada. Se agregó búsqueda por nombre o número y encabezados con mayor contraste para privadas y dormitorios.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome se verificaron las pestañas, el buscador, el día inicial, los egresos y el neto de efectivo con abonos de hoja por QR y tarjeta. Se usó una base temporal y el esquema existente.
+
 ## 2026-11-10 — Responsables de estadía y mejoras visuales
 
 - El calendario muestra iniciales de la etapa actual. La reserva y la hoja muestran por separado a quien creó la reserva, registró la entrada y registró la salida. Se reutiliza la auditoría para las salidas y los nombres históricos, con la identidad del superadministrador protegida según el rol.

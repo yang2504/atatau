@@ -25,6 +25,7 @@ const ledger = (where) => `WITH ledger AS (
 SELECT ledger.source,ledger.id,ledger.day,ledger.kind,ledger.detail,ledger.base_cents,
   ledger.surcharge_cents,ledger.method,ledger.voided,ledger.cash_box,
   ledger.base_cents AS cash_cents,
+  CASE WHEN ledger.method='Efectivo' THEN ledger.base_cents ELSE 0 END AS physical_cents,
   (SELECT a.created_at FROM audit_log a WHERE a.entity_id=ledger.id AND a.entity=
     CASE ledger.source WHEN 'manual' THEN 'cash_entry' WHEN 'pop' THEN 'pop_movement'
       ELSE 'folio_payment' END ORDER BY a.id LIMIT 1) AS recorded_at,
@@ -82,6 +83,8 @@ export function cashModule(db, admin) {
     const day = date(req.body.day);
     const kind = choice(req.body.kind, ["income", "expense"], "Movimiento");
     const box = cashBox(req.body.cash_box);
+    if (box === "pub" && kind === "income")
+      fail("Los ingresos de Caja Pub se registran desde Inventario Pub.", 400);
     if (req.user.role === "receptionist" && (day !== localDay() || kind !== "income"))
       fail("Recepción solo puede registrar ingresos del día.", 403);
     const detail = text(req.body.detail, "Concepto", 160);

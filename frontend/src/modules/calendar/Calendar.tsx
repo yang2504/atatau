@@ -9,6 +9,7 @@ import {
 } from "../../lib/api";
 import { Icon, Empty } from "../../components/UI";
 import { reservationStaff } from "../reservations/ReservationStaff";
+import { nameMatches } from "../../lib/guestSearch";
 
 export function Calendar({
   data,
@@ -25,8 +26,9 @@ export function Calendar({
   onMove: (r: Reservation, unit: number, date: string) => Promise<void>;
   onRooms: () => void;
 }) {
-  const [start, setStart] = useState(today()),
+  const [start, setStart] = useState(() => addDays(today(), -2)),
     [filter, setFilter] = useState("all");
+  const [roomQuery, setRoomQuery] = useState("");
   const [range, setRange] = useState(7);
   const [selection, setSelection] = useState<{
     unit: number;
@@ -34,6 +36,7 @@ export function Calendar({
     to: string;
   } | null>(null);
   const end = addDays(start, range);
+  const currentDay = today();
   const days = Array.from({ length: range }, (_, i) => addDays(start, i));
   const occupiedByDay = days.map(
     (day) =>
@@ -49,8 +52,9 @@ export function Calendar({
       ),
   );
   const rooms = data.rooms.filter(
-    (r) => r.active && (filter === "all" || r.type === filter),
+    (r) => r.active && (filter === "all" || r.type === filter) && nameMatches(roomQuery, r.name),
   );
+  const hasActiveRooms = data.rooms.some((room) => room.active);
   const title = new Intl.DateTimeFormat("es-BO", {
     month: "long",
     year: "numeric",
@@ -78,7 +82,7 @@ export function Calendar({
             >
               ‹
             </button>
-            <button onClick={() => setStart(today())}>Hoy</button>
+            <button onClick={() => setStart(addDays(today(), -2))}>Hoy</button>
             <button
               aria-label={`${range} días siguientes`}
               onClick={() => setStart(end)}
@@ -99,6 +103,8 @@ export function Calendar({
           />
         </div>
         <div className="calendar-filters">
+        <input type="search" aria-label="Buscar habitación en el calendario"
+          placeholder="Buscar habitación…" value={roomQuery} onChange={(e) => setRoomQuery(e.target.value)} />
         <select aria-label="Días visibles" value={range} onChange={(e) => setRange(Number(e.target.value))}>
           <option value={7}>7 días · ampliado</option>
           <option value={14}>14 días</option>
@@ -117,17 +123,22 @@ export function Calendar({
       {!rooms.length ? (
         <Empty
           title={
-            data.rooms.some((r) => r.active)
+            hasActiveRooms
               ? "Sin habitaciones en este filtro"
               : "Tu recepción comienza aquí"
           }
         >
-          <p>
-            Agrega las habitaciones privadas y las camas de tus dormitorios.
-          </p>
-          <button className="button primary" onClick={onRooms}>
-            Configurar habitaciones <Icon name="arrow" size={16} />
-          </button>
+          {hasActiveRooms ? <>
+            <p>Prueba con otro nombre o número de habitación.</p>
+            <button className="button secondary" onClick={() => { setRoomQuery(""); setFilter("all"); }}>
+              Quitar filtros
+            </button>
+          </> : <>
+            <p>Agrega las habitaciones privadas y las camas de tus dormitorios.</p>
+            <button className="button primary" onClick={onRooms}>
+              Configurar habitaciones <Icon name="arrow" size={16} />
+            </button>
+          </>}
         </Empty>
       ) : (
         <>
@@ -141,7 +152,8 @@ export function Calendar({
                 {days.map((day) => (
                   <div
                     key={day}
-                    className={`date-heading ${day === today() ? "is-today" : ""}`}
+                    className={`date-heading ${day === currentDay ? "is-today" : ""}`}
+                    aria-current={day === currentDay ? "date" : undefined}
                   >
                     <span>
                       {new Intl.DateTimeFormat("es", {
@@ -156,11 +168,14 @@ export function Calendar({
                 ))}
               </div>
               {rooms.map((room) => (
-                <div key={room.id} className="room-group">
+                <div key={room.id} className={`room-group room-${room.type}`}>
                   <div className="room-header">
                     <div>
                       <Icon name="bed" size={16} />
-                      <strong title={room.name}>{room.name}</strong>
+                      <div className="room-heading-text">
+                        <strong title={room.name}>{room.name}</strong>
+                        <small>{room.type === "private" ? "Privada" : "Dormitorio"}</small>
+                      </div>
                     </div>
                     {days.map((day, index) => {
                       const free = room.units.filter(
@@ -175,13 +190,13 @@ export function Calendar({
                       return (
                         <span
                           key={day}
-                          className={`room-availability ${free ? "has-space" : ""}`}
+                          className={`room-day ${day === currentDay ? "is-today" : ""}`}
                           title={`${room.name} · ${shortDate(day)} · ${label}`}
                         >
                           <span className="availability-sr">
                             {shortDate(day)} · {label}
                           </span>
-                          <span aria-hidden="true">
+                          <span aria-hidden="true" className={`room-availability ${free ? "has-space" : ""}`}>
                             {room.type === "private"
                               ? label
                               : `${free}/${room.capacity}`}
@@ -214,7 +229,7 @@ export function Calendar({
                           <button
                             key={day}
                             style={{ gridColumn: index + 2, gridRow: 1 }}
-                            className={`calendar-cell ${day === today() ? "is-today" : ""} ${selected ? "selected" : ""}`}
+                            className={`calendar-cell ${day === currentDay ? "is-today" : ""} ${selected ? "selected" : ""}`}
                             disabled={!unit.active}
                             tabIndex={occupiedByDay[index].has(unit.id) ? -1 : 0}
                             aria-label={`${room.name}, ${unit.label}, ${day}: seleccionar fecha`}
