@@ -47,6 +47,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 
 - Calendario de 7 o 14 días con encabezado fijo, iconos de personas y filas por cama. Permite seleccionar rangos, navegar por fechas, crear y editar reservas. Arrastrar una reserva de una cama o privada conserva el número de noches. Las reservas de varias camas se reubican desde su formulario.
 - El calendario abre dos días antes de hoy y resalta la columna de hoy. El botón **Hoy** vuelve a esa vista. Busca una habitación por nombre o número y distingue privadas y dormitorios por sus encabezados.
+- Las tarjetas de PAX, plazas disponibles, llegadas y salidas del inicio abren el detalle de hoy. Las llegadas incluyen reservas confirmadas y por confirmar. El icono de recibo de una reserva abre su hoja de consumo o permite elegir entre sus hojas individuales.
 - Cada reserva muestra las iniciales de quien registró su estado actual con **R** para reserva, **E** para entrada y **S** para salida. Al abrir la reserva o su hoja se ven los responsables de cada etapa. Las salidas anteriores al registro de auditoría pueden aparecer sin responsable.
 - Privadas completas y dormitorios con camas individuales. Administración puede editar el nombre y la capacidad desde **Habitaciones**, además de habilitar e inhabilitar.
 - El calendario indica las camas libres sobre el total de cada dormitorio para cada fecha. En privadas muestra si la habitación está libre u ocupada.
@@ -69,8 +70,8 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - La hoja muestra el total de cargos, los abonos y el saldo pendiente antes del detalle. En cada consumo se distingue a quien registró el cargo de quien recibió el abono. Los cobros de estadía tienen sus propios comprobantes.
 - En una reserva puedes elegir una hoja por huésped o una cuenta conjunta a nombre de la persona encargada. Si dejas el encargado vacío, se usa el titular de la reserva.
 - **Caja Chica** registra automáticamente los abonos de las hojas de consumo y los cobros de hospedaje. **Caja Pub** recibe sus ingresos nuevos exclusivamente de las ventas de Inventario Pub. Administración puede registrar egresos propios del Pub. Los ingresos manuales anteriores de Caja Pub se identifican como históricos.
-- Cada caja muestra el neto físico de ingresos y egresos en efectivo. Los ingresos por QR, tarjeta, transferencia y otros medios se totalizan aparte, al importe base. Usa **Egresos** para ver solo las salidas registradas, destacadas en rojo con importe negativo.
-- **Caja → Mi turno** empieza en Bs 0 en cada inicio de sesión. Los movimientos manuales, abonos y ventas se vinculan al turno en que se registran, incluso cuando su fecha contable es otra. Cerrar sesión finaliza el turno y conserva los movimientos. **Historial de turnos** muestra la apertura, el cierre, el usuario y los movimientos de cada caja. Recepción consulta sus turnos y administración consulta los del equipo.
+- Cada caja tiene dos pestañas de movimientos. **Efectivo** muestra las entradas y salidas físicas. **Transferencia** reúne QR, tarjeta, transferencia y otros medios, al importe base. Los cobros rápidos y los abonos aparecen automáticamente según el método registrado.
+- En **Turnos**, administración arrastra personas al calendario semanal y ajusta el inicio y fin de cada turno. El horario se repite hasta editarlo. Cada operador conserva el mismo turno al volver a iniciar sesión dentro de su horario. Fuera del horario asignado, la caja usa el tramo disponible del día en hora de Bolivia. **Historial de turnos** muestra los movimientos y la hora de cierre.
 - **Convertir tarifa de USD a Bs** consulta el tipo de cambio oficial del BCB al activar la casilla. Puedes aplicar el equivalente a una reserva, una extensión o el talonario. Si el BCB no responde, se usa el último dato oficial guardado mientras esté vigente. Cuando falta una cotización vigente, se usa el respaldo de **Configuración → Tipo de cambio para hospedaje**, si administración lo guardó. El importe aplicado se redondea al centavo y se guarda en bolivianos.
 - **Inventario Pub** registra productos, entradas, bajas y ventas. Cada venta descuenta unidades y registra el ingreso en Caja Pub dentro de la misma transacción.
 - **Auditoría** permite a administración consultar el usuario, la hora local y los valores anterior y nuevo de reservas, llegadas, cambios de habitación y fechas, cancelaciones, consumos, abonos y movimientos de caja. Los registros históricos conservan la información que se guardaba en su momento.
@@ -86,6 +87,8 @@ Desde **Hojas de consumo**, abre una hoja, elige **Abonar** en la fila de la noc
 Al cobrar con **tarjeta**, ingresa el importe base. El total a cobrar incluye el 5 % de comisión, redondeada al centavo por operación. El saldo del huésped y el total por tarjeta se calculan sobre el importe base. Esta regla también aplica a las ventas del Pub y los ingresos manuales. Los cobros nuevos por QR se registran por el importe base. Los recargos quedan visibles como referencia en cada movimiento.
 
 En **Hojas de consumo**, el superadministrador puede editar el importe, la fecha y el medio de pago de un abono activo. Al editar, la versión anterior queda anulada y la corrección actualiza los saldos y Caja Chica. Administración y el superadministrador pueden anular abonos. Si se anula un cobro de estadía, se revierten todas sus aplicaciones a la vez.
+
+El cobro rápido de entrada muestra quién cobró en el comprobante y en las noches afectadas. Desde el comprobante o el historial de un abono, administración puede registrar un **reembolso parcial o total** con motivo. Se registra como egreso de Caja Chica en el medio original, por el importe base devuelto, y reduce lo abonado en la hoja. Los reembolsos de un cobro de estadía se aplican desde sus últimas partidas. Una vez reembolsado, el cobro se conserva para consultar su historial y registrar devoluciones adicionales hasta agotar el importe.
 
 En el formulario de reserva elige **Confirmada** o **Pendiente**. Ambas apartan disponibilidad. Las operaciones de llegada, salida y cancelación están en **Acciones de la estadía**.
 
@@ -120,7 +123,7 @@ La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el pa
 
 SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
-Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 010 incorpora turnos, valores de auditoría y el tipo de cambio de hospedaje. Los movimientos previos siguen en el cuaderno por fecha y los turnos se registran desde la actualización. Los eventos anteriores pueden aparecer sin valores anterior y nuevo.
+Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 011 incorpora horarios semanales y reembolsos. Las cajas conservan sus turnos y movimientos anteriores.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 
@@ -136,7 +139,7 @@ Las pruebas usan SQLite en memoria y HTTP real: cruces, límites de fechas/capac
 
 ## Siguientes decisiones
 
-1. Definir reglas de descuentos, reembolsos y arqueo por turno.
+1. Definir reglas de descuentos y arqueo por turno.
 2. Confirmar habitaciones reales, camas, moneda y datos requeridos por huésped.
 3. Definir si un grupo necesita varias habitaciones con una sola cuenta; el modelo actual reserva una habitación por reserva.
 4. Añadir bloqueo de camas por mantenimiento, copias automáticas y recuperación de contraseña.

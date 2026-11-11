@@ -1,5 +1,19 @@
 # Cambios y decisiones importantes
 
+## 2026-11-11 — Detalle de agenda y acceso a hojas desde el calendario
+
+- Las cuatro tarjetas del resumen abren modales con sus datos. Las listas de reservas muestran nombres, PAX, habitación, fechas y estado. La disponibilidad muestra las habitaciones y camas libres.
+- Las llegadas de hoy por confirmar aparecen en el contador, su modal y la agenda. Su bloque transparente muestra la etiqueta «Pend.».
+- El icono de recibo abre una hoja existente desde el calendario. Cuando hay varias hojas individuales, permite elegir la persona.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome con una base temporal se verificaron los cuatro modales, la llegada pendiente transparente y el acceso a hojas conjuntas e individuales.
+
+## 2026-11-11 — Cuentas de pago, horarios y reembolsos
+
+- Cada caja ofrece **Efectivo** y **Transferencia**. Los abonos y cobros rápidos entran según el medio elegido. Transferencia incluye QR, tarjeta, transferencia y otros medios.
+- Administración ajusta turnos en un calendario semanal. El horario se repite hasta editarlo, admite turnos nocturnos y conserva la instancia del turno al cerrar sesión y volver a entrar. Fuera del horario se usa el tramo disponible del día. El historial anterior se conserva.
+- El cobro rápido muestra al responsable en el comprobante y en las partidas de hospedaje. Administración puede registrar reembolsos parciales o totales con motivo. El egreso va a Caja Chica por el medio original y ajusta el importe abonado de la hoja. Las devoluciones de cobros agrupados se aplican desde las últimas partidas.
+- La migración 011 agrega horarios y reembolsos. Respaldar la carpeta de datos antes de actualizar. Pasaron `npm test`, `npm run check` y `npm run build`. Con una base temporal en Chrome se comprobaron el arrastre, cambio de hora, cobro rápido con responsable y reembolso parcial reflejado en Transferencia.
+
 ## 2026-11-10 — Separación de Caja Chica y Caja Pub
 
 - Los cobros de hospedaje y abonos de las hojas se registran en Caja Chica. Caja Pub recibe ingresos nuevos solo desde las ventas del inventario y admite sus propios egresos administrativos. Los ingresos manuales anteriores de Caja Pub quedan identificados como históricos.

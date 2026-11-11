@@ -443,8 +443,10 @@ small {
   align-items: flex-start;
   justify-content: space-between;
   gap: 9px;
+  text-align: start;
 }
-.stat span:not(.stat-icon) {
+.stat:hover { border-color: #a9bda9; background: #f7faf4; }
+.stat-copy > span {
   font-size: 11px;
   color: #7b8774;
   display: block;
@@ -864,6 +866,22 @@ small {
 }
 .agenda-list .tag {
   margin-left: auto;
+}
+.tag.pending { background: #f6edcc; color: #654a10; }
+.summary-date { margin-bottom: 8px; color: #52614c; }
+.summary-reservations { padding: 0; }
+.summary-reservations strong { font-size: 14px; }
+.summary-reservations small { font-size: 12px; color: #52614c; }
+.summary-reservations button:hover { background: #f6f8f3; }
+.summary-guest { min-width: 0; overflow-wrap: anywhere; }
+.summary-places { list-style: none; padding: 0; margin: 0; }
+.summary-places li {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
 }
 .note-preview {
   display: flex;
@@ -1953,8 +1971,9 @@ details[open] summary {
 .reservation-block small { font-size: 10px; opacity: 1; }
 .reservation-block.pending { border: 2px dashed #496b58; color: #294538; }
 .reservation-block.pending .reservation-avatar { background: transparent; }
-.reservation-block.can-extend { padding-inline-end: 30px; }
+.reservation-block.has-actions { padding-inline-end: 30px; }
 .reservation-block.single-night .reservation-avatar { display: none; }
+.reservation-pending-label { color: #405348; font-weight: 700; }
 .reservation-initials {
   border-radius: 3px;
   background: #fff9;
@@ -1962,23 +1981,28 @@ details[open] summary {
   padding-inline: 2px;
   font-weight: 700;
 }
-.reservation-extend {
+.reservation-actions {
   grid-row: 1;
   justify-self: end;
   align-self: center;
   z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-inline-end: 7px;
+}
+.reservation-actions button {
   display: grid;
   place-items: center;
   width: 24px;
-  height: 24px;
-  margin-inline-end: 7px;
+  height: 22px;
   padding: 0;
   border: 1px solid #9fb9a8;
   border-radius: 6px;
   background: #fff;
   color: var(--green);
 }
-.reservation-extend:hover { background: #edf3e9; }
+.reservation-actions button:hover { background: #edf3e9; }
 .legend-dot.pending { background: transparent; border: 1px dashed #496b58; }
 
 .chat-panel { overflow: hidden; min-width: 0; }
@@ -2191,6 +2215,59 @@ details[open] summary {
 }
 .folio-room-tabs button { color: #3f5746; }
 .folio-room-tabs button.active { background: #245144; color: #fff; }
+
+.shift-panel { min-width: 0; }
+.shift-panel .section-toolbar { flex-wrap: wrap; }
+.shift-people, .shift-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+.shift-people { padding: 14px 18px; }
+.shift-people [draggable="true"], .shift-block[draggable="true"] { cursor: grab; }
+.shift-form { margin: 0 18px 16px; padding: 14px; background: #f1f5ef; border-radius: 10px; }
+.shift-fields .check-option { align-self: center; }
+.shift-calendar { max-height: min(64vh, 660px); overflow: auto; }
+.shift-grid {
+  --shift-hour: 36px;
+  display: grid;
+  grid-template-columns: 64px repeat(7, minmax(96px, 1fr));
+  min-width: 736px;
+}
+.shift-day-name {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #214c3f;
+  color: white;
+  padding: 11px 7px;
+  text-align: center;
+  font-size: 12px;
+}
+.shift-hours div { height: var(--shift-hour); padding: 3px 8px; color: #495d50; font-size: 11px; text-align: end; }
+.shift-column {
+  position: relative;
+  height: calc(24 * var(--shift-hour));
+  border-left: 1px solid #dbe4db;
+  background: repeating-linear-gradient(to bottom, #f8faf7 0 calc(var(--shift-hour) - 1px), #dbe4db calc(var(--shift-hour) - 1px) var(--shift-hour));
+}
+.shift-block {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  overflow: hidden;
+  padding: 3px 6px;
+  border: 1px solid #adc7b7;
+  border-inline-start: 3px solid #27604e;
+  border-radius: 5px;
+  background: #e0f0e4;
+  color: #214536;
+  text-align: start;
+  font-size: 12px;
+}
+.shift-block small { display: block; }
 .turn-meta {
   padding: 0.7rem 22px 0;
 }

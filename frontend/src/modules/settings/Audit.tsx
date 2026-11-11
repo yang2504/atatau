@@ -18,11 +18,12 @@ type Event = {
 const actions: Record<string, string> = {
   create: "Creación", update: "Edición", check_in: "Llegada", check_out: "Salida",
   cancel: "Cancelación", extend: "Extensión", void: "Anulación",
-  replace: "Corrección de abono", create_stay_payment: "Cobro de estadía",
+  replace: "Corrección de abono", create_stay_payment: "Cobro de estadía", refund: "Reembolso", delete: "Retiro",
 };
 const entities: Record<string, string> = {
   reservation: "Reserva", folio: "Hoja", folio_service: "Consumo", folio_payment: "Abono",
   cash_entry: "Movimiento de caja", pop_movement: "Movimiento Pub", lodging_exchange_rate: "Tipo de cambio",
+  shift_schedule: "Horario semanal", folio_refund: "Reembolso de hoja",
 };
 const fields: Record<string, string> = {
   id: "ID", check_in: "Entrada", check_out: "Salida", guest_name: "Titular", pax: "PAX",

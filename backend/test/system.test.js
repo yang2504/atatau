@@ -347,11 +347,16 @@ test("reservas, permisos y persistencia transaccional", async () => {
       role: "receptionist",
     });
     assert.equal(receptionist.status, 201);
+    const weekday = (new Date(localDay()).getUTCDay() + 6) % 7;
+    const shift = { user_id: receptionist.body.id, weekday, start_minute: 0, duration: 1440 };
+    assert.equal((await request("/shifts", shift)).status, 201);
+    assert.equal((await request("/shifts", { ...shift, start_minute: 60 })).status, 409);
     const receptionLogin = await request("/auth/login", {
       username: "recepcion",
       password: "clave-de-recepcion",
     }, "POST", "");
     assert.equal(receptionLogin.status, 200);
+    assert.equal((await request("/shifts", undefined, "GET", receptionLogin.cookie)).status, 403);
     const firstPath = `/reservations/${first.body.id}`;
     const arrived = { ...draft, status: "in_house", checked_in_by: setup.body.id };
     assert.equal((await request(firstPath, arrived, "PUT", receptionLogin.cookie)).status, 200);
@@ -549,6 +554,8 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const receipt = stayDetail.stay_payments[0];
     assert.equal(receipt.amount_cents, 20102);
     assert.equal(receipt.surcharge_cents, 1005);
+    assert.equal(receipt.author, "Administración");
+    assert.ok(stayDetail.entries.every((row) => row.cashiers.includes("Administración")));
     assert.ok(stayDetail.entries.every((row) => row.balance_cents === 0));
     const otherDetail = (await request(`/folios/${stayFolios[1].id}`)).body;
     assert.equal(otherDetail.stay_payments[0].id, receipt.id);
@@ -584,6 +591,11 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const changedAdvance = await request(singlePath, { ...deposit, amount_cents: 200 }, "PATCH");
     assert.equal(changedAdvance.status, 200);
     assert.equal((await request(stayPath)).body.entries[0].paid_cents, 300);
+    const regularRefund = await adminRequest(stayPath + `/payments/${changedAdvance.body.id}/refunds`,
+      { amount_cents: 50, reason: "Devolución parcial QR" });
+    assert.equal(regularRefund.status, 201);
+    assert.equal((await request(stayPath)).body.entries[0].paid_cents, 250);
+    assert.equal((await request(stayPath + `/payments/${changedAdvance.body.id}`, deposit, "PATCH")).status, 409);
 
     const groupHolder = {
       ...draft, platform_id: 1, status: "pending", guest_name: "Titular reserva",
@@ -637,6 +649,22 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const masked = (await adminRequest("/reservations")).body.find((row) => row.id === holderBooking.body.id);
     assert.deepEqual([masked.created_by_name, masked.checked_in_by_name, masked.checked_out_by_name],
       ["Atatau", "Atatau", "Administración"]);
+    const grouped = (await request(promotionalSheet)).body.stay_payments[0];
+    const refundPath = promotionalSheet + `/stay-payments/${grouped.id}/refunds`;
+    assert.equal((await request(refundPath, { amount_cents: 1200, reason: "Ajuste de hospedaje" },
+      "POST", receptionLogin.cookie)).status, 403);
+    const partial = await adminRequest(refundPath, { amount_cents: 1200, reason: "Ajuste de hospedaje" });
+    assert.equal(partial.status, 201);
+    assert.equal((await adminRequest(refundPath, { amount_cents: 42000, reason: "Excede el cobro" })).status, 409);
+    const afterRefund = (await request(promotionalSheet)).body;
+    assert.equal(afterRefund.entries.reduce((sum, row) => sum + row.balance_cents, 0), 1200);
+    assert.equal(afterRefund.stay_payments[0].retained_cents, 40800);
+    assert.equal(afterRefund.refunds[0].author, "Administración");
+    const refundRow = (await adminRequest("/cash/turns/current")).body.entries
+      .find((row) => row.source === "refund" && row.id === partial.body.id);
+    assert.equal(refundRow.physical_cents, 1200);
+    assert.equal(refundRow.kind, "expense");
+    assert.ok(!(await adminRequest("/cash/turns/current?box=pub")).body.entries.some((row) => row.source === "refund"));
     const moved = {
       ...stay, guest_name: "Traslado auditado", check_in: "2098-01-01", check_out: "2098-01-02",
     };
@@ -665,10 +693,10 @@ test("reservas, permisos y persistencia transaccional", async () => {
     }, "POST", "");
     assert.equal(secondReception.status, 200);
     const newTurn = (await request("/cash/turns/current", undefined, "GET", secondReception.cookie)).body;
-    assert.notEqual(newTurn.id, ownTurn.id);
-    assert.deepEqual(newTurn.entries, []);
+    assert.equal(newTurn.id, ownTurn.id);
+    assert.deepEqual(newTurn.entries, ownTurn.entries);
     const previous = (await request(`/cash/turns/${ownTurn.id}`, undefined, "GET", secondReception.cookie)).body;
-    assert.ok(previous.ended_at);
+    assert.equal(previous.ended_at, null);
     assert.deepEqual(previous.entries, ownTurn.entries);
     assert.equal(
       (await request(`/users/${receptionist.body.id}`, { active: 0 }, "PATCH"))

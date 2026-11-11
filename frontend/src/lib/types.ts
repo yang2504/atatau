@@ -96,6 +96,7 @@ export type Payment = {
   id: number;
   day: string;
   amount_cents: number;
+  retained_cents: number;
   surcharge_cents: number;
   method: string;
   author: string;
@@ -114,6 +115,7 @@ export type FolioEntry = {
   balance_cents: number;
   author: string | null;
   payments: Payment[];
+  cashiers: string[];
 };
 export type Data = {
   rooms: Room[];

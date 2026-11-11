@@ -10,7 +10,7 @@ import {
 } from "./lib/api";
 import type { Data, Draft, Folio, Reservation, User } from "./lib/types";
 import { nameMatches, reservationMatches } from "./lib/guestSearch";
-import { ErrorBox, Icon, Empty } from "./components/UI";
+import { ErrorBox, Icon, Empty, Modal } from "./components/UI";
 import { Calendar } from "./modules/calendar/Calendar";
 import { ReservationForm } from "./modules/reservations/ReservationForm";
 import { ExtendStay } from "./modules/reservations/ExtendStay";
@@ -23,6 +23,7 @@ import { Folios } from "./modules/folios/Folios";
 import { FolioSheet } from "./modules/folios/FolioSheet";
 import { GuestSearch } from "./modules/reservations/GuestSearch";
 import { Cash } from "./modules/cash/Cash";
+import { Shifts } from "./modules/cash/Shifts";
 import { Pop } from "./modules/pop/Pop";
 import { Breakfast } from "./modules/reservations/Breakfast";
 
@@ -41,6 +42,7 @@ const sections = [
   ] },
   { title: "Administración", pages: [
     ["settings", "Configuración", "settings"],
+    ["shifts", "Turnos", "calendar"],
     ["audit", "Auditoría", "clipboard"],
   ] },
 ];
@@ -54,6 +56,7 @@ const descriptions: Record<string, string> = {
   cash: "Consulta los movimientos y registra los cobros de recepción.",
   pop: "Controla las existencias y registra las ventas del mostrador.",
   settings: "Organiza tus canales de reserva y tu equipo.",
+  shifts: "Organiza el horario semanal del equipo.",
   audit: "Consulta quién hizo cada operación y qué cambió.",
 };
 const blank: Data = {
@@ -187,6 +190,8 @@ export default function App() {
     [error, setError] = useState(""),
     [query, setQuery] = useState("");
   const [selectedFolio, setSelectedFolio] = useState<Folio | null>(null);
+  const [folioReservation, setFolioReservation] = useState<Reservation | null>(null);
+  const [summary, setSummary] = useState<"pax" | "free" | "arrivals" | "departures" | null>(null);
   const [extending, setExtending] = useState<Reservation | null>(null);
   const [editor, setEditor] = useState<{
     reservation?: Reservation;
@@ -235,6 +240,13 @@ export default function App() {
     await refresh();
     setError("");
   }
+  function openReservationFolios(reservation: Reservation) {
+    const folios = data.folios.filter((folio) => folio.reservation_id === reservation.id);
+    if (!folios.length) return;
+    setEditor(null);
+    if (folios.length === 1) setSelectedFolio(folios[0]);
+    else setFolioReservation(reservation);
+  }
   async function move(r: Reservation, unit: number, date: string) {
     if (r.unit_ids.length !== 1) {
       setEditor({ reservation: r });
@@ -267,6 +279,8 @@ export default function App() {
       setPage("calendar");
       setEditor(null);
       setSelectedFolio(null);
+      setFolioReservation(null);
+      setSummary(null);
       setExtending(null);
       setQuery("");
     } catch (e) {
@@ -297,17 +311,21 @@ export default function App() {
   const capacity = data.rooms
     .filter((r) => r.active)
     .reduce((sum, r) => sum + r.capacity, 0);
-  const free = units
-    .filter((u) => !occupied.has(u.id))
-    .reduce((sum, u) => sum + u.capacity, 0);
+  const freeUnits = units.filter((u) => !occupied.has(u.id));
+  const free = freeUnits.reduce((sum, u) => sum + u.capacity, 0);
   const pax = active.reduce((sum, r) => sum + r.pax, 0),
     pending = data.notes.filter((n) => !n.resolved);
   const arrivals = data.reservations.filter(
-    (r) => r.check_in === day && r.status === "confirmed",
+    (r) => r.check_in === day && (r.status === "pending" || r.status === "confirmed"),
   );
   const departures = data.reservations.filter(
     (r) => r.check_out === day && r.status === "in_house",
   );
+  const summaryTitle = {
+    pax: "PAX asignados hoy", free: "Plazas disponibles",
+    arrivals: "Llegadas pendientes", departures: "Salidas pendientes",
+  };
+  const summaryReservations = summary === "arrivals" ? arrivals : summary === "departures" ? departures : active;
   const section = sections.find((section) => section.pages.some(([key]) => key === page))!;
   const [, title, pageIcon] = section.pages.find(([key]) => key === page)!;
   const visibleReservations =
@@ -422,28 +440,32 @@ export default function App() {
             <>
               <div className="stats">
                 <Stat
-                  label="PAX asignados hoy"
+                  label={summaryTitle.pax}
                   value={String(pax)}
                   detail={`de ${capacity} plazas totales`}
                   icon="users"
+                  onClick={() => setSummary("pax")}
                 />
                 <Stat
-                  label="Plazas disponibles"
+                  label={summaryTitle.free}
                   value={String(free)}
                   detail="para reservar esta noche"
                   icon="bed"
+                  onClick={() => setSummary("free")}
                 />
                 <Stat
-                  label="Llegadas pendientes"
+                  label={summaryTitle.arrivals}
                   value={String(arrivals.length).padStart(2, "0")}
                   detail="reservas para hoy"
                   icon="calendar"
+                  onClick={() => setSummary("arrivals")}
                 />
                 <Stat
-                  label="Salidas pendientes"
+                  label={summaryTitle.departures}
                   value={String(departures.length).padStart(2, "0")}
                   detail="reservas para hoy"
                   icon="logout"
+                  onClick={() => setSummary("departures")}
                 />
               </div>
               <Calendar
@@ -451,6 +473,7 @@ export default function App() {
                 onCreate={(draft) => setEditor({ draft })}
                 onEdit={(reservation) => setEditor({ reservation })}
                 onExtend={setExtending}
+                onFolio={openReservationFolios}
                 onMove={move}
                 onRooms={() => setPage("rooms")}
               />
@@ -492,9 +515,9 @@ export default function App() {
                             </small>
                           </span>
                           <span
-                            className={`tag ${r.check_in === day ? "confirmed" : "checked_out"}`}
+                            className={`tag ${r.status === "pending" ? "pending" : r.check_in === day ? "confirmed" : "checked_out"}`}
                           >
-                            {r.check_in === day ? "Llegada" : "Salida"}
+                            {r.status === "pending" ? "Llegada · Por confirmar" : r.check_in === day ? "Llegada" : "Salida"}
                           </span>
                         </button>
                       ))}
@@ -545,6 +568,7 @@ export default function App() {
           )}
           {page === "notes" && <Notes data={data} user={user} onSaved={onSaved} />}
           {page === "cash" && <Cash user={user} />}
+          {page === "shifts" && user.role !== "receptionist" && <Shifts />}
           {page === "audit" && user.role !== "receptionist" && <Audit />}
           {page === "breakfast" && <Breakfast reservations={data.reservations} />}
           {page === "pop" && <Pop user={user} />}
@@ -662,6 +686,59 @@ export default function App() {
           </footer>
         </div>
       </main>
+      {summary && <Modal title={summaryTitle[summary]} onClose={() => setSummary(null)}>
+        <p className="summary-date">{shortDate(day, true)}</p>
+        {summary === "free" ? freeUnits.length ? (
+          <ul className="summary-places">
+            {freeUnits.map((unit) => {
+              const room = data.rooms.find((item) => item.id === unit.room_id);
+              return <li key={unit.id}>
+                <strong>{room?.name}</strong>
+                <span>{unit.label} · {unit.capacity} {unit.capacity === 1 ? "plaza" : "plazas"}</span>
+              </li>;
+            })}
+          </ul>
+        ) : <p>No hay plazas disponibles para esta noche.</p> : summaryReservations.length ? (
+          <div className="agenda-list summary-reservations">
+            {summaryReservations.map((reservation) => {
+              const room = data.rooms.find((item) => item.units.some((unit) => reservation.unit_ids.includes(unit.id)));
+              const beds = room?.type === "dorm"
+                ? room.units.filter((unit) => reservation.unit_ids.includes(unit.id)).map((unit) => unit.label).join(", ")
+                : "";
+              return <button type="button" key={reservation.id} onClick={() => {
+                setSummary(null);
+                setEditor({ reservation });
+              }}>
+                <span className="summary-guest">
+                  <strong>{reservation.guest_name} · #{reservation.id}</strong>
+                  <small>{[room?.name, beds, `${reservation.pax} PAX`].filter(Boolean).join(" · ")}</small>
+                  <small>{shortDate(reservation.check_in)} → {shortDate(reservation.check_out)}
+                    {summary === "arrivals" && reservation.arrival_time && ` · Llegada prevista ${reservation.arrival_time}`}</small>
+                  {reservation.guests.length > 1 && <small>
+                    Huéspedes · {reservation.guests.map((guest) => guest.name).join(", ")}
+                  </small>}
+                </span>
+                <span className={`tag ${reservation.status}`}>
+                  {reservation.status === "pending" ? "Por confirmar" : statusNames[reservation.status]}
+                </span>
+              </button>;
+            })}
+          </div>
+        ) : <p>No hay registros para hoy.</p>}
+      </Modal>}
+      {folioReservation && <Modal title={`Hojas de consumo · Reserva #${folioReservation.id}`}
+        onClose={() => setFolioReservation(null)}>
+        <div className="agenda-list summary-reservations">
+          {data.folios.filter((folio) => folio.reservation_id === folioReservation.id).map((folio) =>
+            <button type="button" key={folio.id} onClick={() => {
+              setFolioReservation(null);
+              setSelectedFolio(folio);
+            }}>
+              <Icon name="receipt" size={17} />
+              <span><strong>{folio.title}</strong><small>Hoja #{folio.id}</small></span>
+            </button>)}
+        </div>
+      </Modal>}
       {selectedFolio && (
         <FolioSheet
           folio={selectedFolio}
@@ -676,6 +753,8 @@ export default function App() {
           data={data}
           reservation={editor.reservation}
           draft={editor.draft}
+          onOpenFolio={editor.reservation && data.folios.some((folio) => folio.reservation_id === editor.reservation?.id)
+            ? openReservationFolios : undefined}
           onClose={() => setEditor(null)}
           onSaved={onSaved}
         />
@@ -694,22 +773,24 @@ function Stat({
   value,
   detail,
   icon,
+  onClick,
 }: {
   label: string;
   value: string;
   detail: string;
   icon: string;
+  onClick: () => void;
 }) {
   return (
-    <article className="panel stat">
-      <div>
+    <button type="button" className="panel stat" onClick={onClick} aria-haspopup="dialog">
+      <span className="stat-copy">
         <span>{label}</span>
         <strong>{value}</strong>
         <small>{detail}</small>
-      </div>
+      </span>
       <span className="stat-icon">
         <Icon name={icon} size={22} />
       </span>
-    </article>
+    </button>
   );
 }

@@ -9,7 +9,7 @@ import {
   text,
 } from "../core/validation.js";
 import { lodgingShare, MAX_NIGHTLY_CENTS, nightDates, nightRates } from "./lodging.js";
-import { paymentMethods, cardSurcharge } from "../core/charges.js";
+import { paymentMethods, cardSurcharge, localDay } from "../core/charges.js";
 import { canSeeSuperadmin } from "./users.js";
 
 const folioQuery = `SELECT f.*, r.guest_name,r.pax,r.check_in,r.check_out,r.status,
@@ -80,9 +80,9 @@ function entries(db, folio, full = 0) {
   }
   const payments = db
     .prepare(
-      `SELECT p.id,p.lodging_day,p.service_id,p.day,p.amount_cents,p.method,p.voided,p.surcharge_cents,p.group_id,
+      `SELECT p.id,p.lodging_day,p.service_id,p.day,p.amount_cents,p.retained_cents,p.method,p.voided,p.surcharge_cents,p.group_id,
         CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
-      FROM folio_payments p
+      FROM folio_payment_balances p
     JOIN users u ON u.id=p.user_id WHERE p.folio_id=? ORDER BY p.id`,
     )
     .all(full, folio.id);
@@ -94,7 +94,7 @@ function entries(db, folio, full = 0) {
           p.lodging_day === row.lodging_day && p.service_id === row.service_id,
       );
       const paid = matching.reduce(
-        (sum, p) => sum + (p.voided ? 0 : p.amount_cents),
+        (sum, p) => sum + (p.voided ? 0 : p.retained_cents),
         0,
       );
       return {
@@ -153,6 +153,7 @@ function stayPayments(db, folioId, full) {
   return db.prepare(`SELECT p.group_id AS id,leader.day,leader.method,leader.voided,
       SUM(p.amount_cents) AS folio_cents,
       (SELECT SUM(amount_cents) FROM folio_payments WHERE group_id=p.group_id) AS amount_cents,
+      (SELECT SUM(retained_cents) FROM folio_payment_balances WHERE group_id=p.group_id) AS retained_cents,
       leader.surcharge_cents,
       CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
     FROM folio_payments p JOIN folio_payments leader ON leader.id=p.group_id
@@ -175,8 +176,13 @@ export function folioModule(db) {
       SELECT listed.*,room.id AS room_id,room.name AS room_name,room.type AS room_type,
         (SELECT json_group_array(DISTINCT substr(s.day,1,7)) FROM folio_services s
           WHERE s.folio_id=listed.id) AS service_months,
-        (SELECT json_group_array(DISTINCT substr(p.day,1,7)) FROM folio_payments p
-          JOIN folios sibling ON sibling.id=p.folio_id WHERE sibling.reservation_id=listed.reservation_id) AS paid_months
+        (SELECT json_group_array(DISTINCT substr(movement.day,1,7)) FROM (
+          SELECT p.day FROM folio_payments p JOIN folios sibling ON sibling.id=p.folio_id
+            WHERE sibling.reservation_id=listed.reservation_id
+          UNION ALL
+          SELECT r.day FROM folio_refunds r JOIN folio_payments p ON p.id=r.payment_id
+            JOIN folios sibling ON sibling.id=p.folio_id WHERE sibling.reservation_id=listed.reservation_id
+        ) movement) AS paid_months
       FROM (${folioQuery}) listed
       LEFT JOIN rooms room ON room.id=(
         SELECT u.room_id FROM allocations a JOIN units u ON u.id=a.unit_id
@@ -201,10 +207,18 @@ export function folioModule(db) {
     const rows = entries(db, folio, full).map((row) => ({
       ...row,
       stay_paid_cents: row.payments.reduce((sum, payment) =>
-        payment.group_id !== null && !payment.voided ? sum + payment.amount_cents : sum, 0),
+        payment.group_id !== null && !payment.voided ? sum + payment.retained_cents : sum, 0),
+      cashiers: [...new Set(row.payments.filter((payment) => !payment.voided)
+        .map((payment) => payment.author))],
       payments: row.payments.filter((payment) => payment.group_id === null),
     }));
-    res.json({ ...folio, entries: rows, stay_payments: stayPayments(db, folio.id, full) });
+    const refunds = db.prepare(`SELECT r.id,r.day,r.payment_id,r.amount_cents,r.reason,p.method,
+      SUM(a.amount_cents) AS folio_cents,
+      CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
+      FROM folio_refunds r JOIN folio_refund_allocations a ON a.refund_id=r.id
+      JOIN folio_payments applied ON applied.id=a.payment_id JOIN folio_payments p ON p.id=r.payment_id
+      JOIN users u ON u.id=r.user_id WHERE applied.folio_id=? GROUP BY r.id ORDER BY r.id DESC`).all(full, folio.id);
+    res.json({ ...folio, entries: rows, stay_payments: stayPayments(db, folio.id, full), refunds });
   });
   router.post("/:id/services", (req, res) => {
     const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
@@ -271,6 +285,7 @@ export function folioModule(db) {
     const paymentId = integer(Number(req.params.paymentId), "Abono");
     transaction(db, () => {
       activePayment(db, folioId, paymentId, group);
+      checkRefunds(paymentId);
       const before = paymentSnapshot(db, paymentId, group);
       db.prepare(group
         ? "UPDATE folio_payments SET voided=1 WHERE group_id=?"
@@ -286,6 +301,7 @@ export function folioModule(db) {
     const paymentId = integer(Number(req.params.paymentId), "Abono");
     const id = transaction(db, () => {
       const payment = activePayment(db, folioId, paymentId, group);
+      checkRefunds(paymentId);
       const folio = findFolio(db, folioId);
       const before = paymentSnapshot(db, paymentId, group);
       db.prepare(group
@@ -312,9 +328,44 @@ export function folioModule(db) {
     });
     res.json({ id });
   }
+  function checkRefunds(paymentId) {
+    if (db.prepare("SELECT 1 FROM folio_refunds WHERE payment_id=? LIMIT 1").get(paymentId))
+      fail("El cobro ya tiene reembolsos registrados.", 409);
+  }
+  function refundPayment(req, res, group) {
+    if (req.user.role === "receptionist") fail("Solo administración puede registrar reembolsos.", 403);
+    const folioId = integer(Number(req.params.id), "Hoja");
+    const paymentId = integer(Number(req.params.paymentId), "Abono");
+    const amount = integer(req.body.amount_cents, "Reembolso", 1, MAX_STAY_CENTS);
+    const reason = text(req.body.reason, "Motivo", 160);
+    const id = transaction(db, () => {
+      activePayment(db, folioId, paymentId, group);
+      const payments = db.prepare(`SELECT id,retained_cents FROM folio_payment_balances
+        WHERE ${group ? "group_id" : "id"}=? AND voided=0 AND retained_cents>0 ORDER BY id DESC`).all(paymentId);
+      const available = payments.reduce((sum, item) => sum + item.retained_cents, 0);
+      if (amount > available) fail("El reembolso supera lo que queda del cobro.", 409);
+      const day = localDay();
+      const refundId = Number(db.prepare(`INSERT INTO folio_refunds(payment_id,user_id,turn_id,day,amount_cents,reason)
+        VALUES(?,?,?,?,?,?)`).run(paymentId, req.user.id, req.user.turnId, day, amount, reason).lastInsertRowid);
+      const insert = db.prepare("INSERT INTO folio_refund_allocations(refund_id,payment_id,amount_cents) VALUES(?,?,?)");
+      let remaining = amount;
+      for (const item of payments) {
+        const applied = Math.min(remaining, item.retained_cents);
+        insert.run(refundId, item.id, applied);
+        remaining -= applied;
+        if (!remaining) break;
+      }
+      audit(db, req.user, "refund", "folio_refund", refundId, null,
+        { payment_id: paymentId, amount_cents: amount, reason, day });
+      return refundId;
+    });
+    res.status(201).json({ id });
+  }
   router.post("/:id/payments/:paymentId/void", (req, res) => voidPayment(req, res, false));
   router.post("/:id/stay-payments/:paymentId/void", (req, res) => voidPayment(req, res, true));
   router.patch("/:id/payments/:paymentId", (req, res) => editPayment(req, res, false));
   router.patch("/:id/stay-payments/:paymentId", (req, res) => editPayment(req, res, true));
+  router.post("/:id/payments/:paymentId/refunds", (req, res) => refundPayment(req, res, false));
+  router.post("/:id/stay-payments/:paymentId/refunds", (req, res) => refundPayment(req, res, true));
   return router;
 }

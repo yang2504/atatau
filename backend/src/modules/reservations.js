@@ -21,7 +21,7 @@ export function listReservations(db, full = 1) {
         COALESCE(arrival.actor_name,u.name) AS checked_in_by_name,
         COALESCE(departure.actor_name,closer.name) AS checked_out_by_name,
         creator.role AS creator_role,u.role AS check_in_role,closer.role AS check_out_role,
-        (SELECT COALESCE(SUM(p.amount_cents),0) FROM folio_payments p
+        (SELECT COALESCE(SUM(p.retained_cents),0) FROM folio_payment_balances p
           JOIN folios f ON f.id=p.folio_id WHERE f.reservation_id=r.id
           AND p.lodging_day IS NOT NULL AND p.voided=0) AS lodging_paid_cents
         FROM reservations r JOIN platforms p ON p.id=r.platform_id
@@ -142,9 +142,9 @@ export function saveReservation(db, body, user, id = null, extension = false) {
     if (previous) {
       const paid = db
         .prepare(
-          `SELECT p.lodging_day FROM folio_payments p
+          `SELECT p.lodging_day FROM folio_payment_balances p
         JOIN folios f ON f.id=p.folio_id
-        WHERE f.reservation_id=? AND p.lodging_day IS NOT NULL AND p.voided=0`,
+        WHERE f.reservation_id=? AND p.lodging_day IS NOT NULL AND p.voided=0 AND p.retained_cents>0`,
         )
         .all(id);
       if (

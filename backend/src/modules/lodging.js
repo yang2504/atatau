@@ -20,7 +20,7 @@ export function* nightDates(start, end) {
 export function paidNights(db, reservationId, nightlyCents, overrides) {
   return db
     .prepare(
-      `SELECT p.lodging_day AS day, SUM(p.amount_cents) AS total FROM folio_payments p
+      `SELECT p.lodging_day AS day, SUM(p.retained_cents) AS total FROM folio_payment_balances p
      JOIN folios f ON f.id=p.folio_id
      WHERE f.reservation_id=? AND p.lodging_day IS NOT NULL AND p.voided=0
      GROUP BY p.lodging_day`,

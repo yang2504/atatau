@@ -16,6 +16,7 @@ export function Calendar({
   onCreate,
   onEdit,
   onExtend,
+  onFolio,
   onMove,
   onRooms,
 }: {
@@ -23,6 +24,7 @@ export function Calendar({
   onCreate: (draft: Draft) => void;
   onEdit: (r: Reservation) => void;
   onExtend: (r: Reservation) => void;
+  onFolio: (r: Reservation) => void;
   onMove: (r: Reservation, unit: number, date: string) => Promise<void>;
   onRooms: () => void;
 }) {
@@ -37,6 +39,7 @@ export function Calendar({
   } | null>(null);
   const end = addDays(start, range);
   const currentDay = today();
+  const hasFolio = new Set(data.folios.map((folio) => folio.reservation_id));
   const days = Array.from({ length: range }, (_, i) => addDays(start, i));
   const occupiedByDay = days.map(
     (day) =>
@@ -302,6 +305,7 @@ export function Calendar({
                                   : "Con saldo";
                           };
                           const extendable = unit.active && r.unit_ids[0] === unit.id && r.status !== "checked_out";
+                          const canOpenFolio = r.unit_ids[0] === unit.id && hasFolio.has(r.id);
                           const staff = reservationStaff(r);
                           const responsible = staff[r.status === "checked_out" ? 2 : r.status === "in_house" ? 1 : 0];
                           const initials = responsible.name?.split(/\s+/).slice(0, 2)
@@ -326,7 +330,7 @@ export function Calendar({
                             <Fragment key={r.id}>
                             <button
                               draggable={!!unit.active}
-                              className={`reservation-block ${r.status}${extendable ? " can-extend" : ""}${right - left === 1 ? " single-night" : ""}`}
+                              className={`reservation-block ${r.status}${extendable || canOpenFolio ? " has-actions" : ""}${right - left === 1 ? " single-night" : ""}`}
                               style={{
                                 gridColumn: `${left + 2} / ${right + 2}`,
                                 background:
@@ -354,19 +358,20 @@ export function Calendar({
                               <span>
                                 <strong>{r.guest_name}</strong>
                                 <small>
+                                  {r.status === "pending" && <span className="reservation-pending-label">Pend. </span>}
                                   {initials ? <span className="reservation-initials">{responsible.code}·{initials}</span>
-                                    : room.type === "dorm" ? "1 cama" : `${r.pax} PAX`}
+                                    : r.status !== "pending" && (room.type === "dorm" ? "1 cama" : `${r.pax} PAX`)}
                                 </small>
                               </span>
                             </button>
-                            {extendable && <button
-                              type="button"
-                              className="reservation-extend"
-                              style={{ gridColumn: right + 1 }}
-                              aria-label={`Alargar estadía de ${r.guest_name}`}
-                              title="Alargar estadía"
-                              onClick={() => onExtend(r)}
-                            ><Icon name="plus" size={15} /></button>}
+                            {(extendable || canOpenFolio) && <div className="reservation-actions" style={{ gridColumn: right + 1 }}>
+                              {canOpenFolio && <button type="button"
+                                aria-label={`Abrir hoja de consumo de ${r.guest_name}`}
+                                title="Hojas de consumo" onClick={() => onFolio(r)}><Icon name="receipt" size={14} /></button>}
+                              {extendable && <button type="button"
+                                aria-label={`Alargar estadía de ${r.guest_name}`}
+                                title="Alargar estadía" onClick={() => onExtend(r)}><Icon name="plus" size={14} /></button>}
+                            </div>}
                             </Fragment>
                           );
                         })}
@@ -381,6 +386,7 @@ export function Calendar({
       <div className="calendar-footer">
         <div className="legend">
           <span>＋ Alargar estadía</span>
+          <span><Icon name="receipt" size={13} /> Hojas de consumo</span>
           <span>R Reserva · E Entrada · S Salida</span>
           <span><i className="legend-dot pending" /> Reserva pendiente</span>
           <span>

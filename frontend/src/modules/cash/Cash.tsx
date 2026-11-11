@@ -6,7 +6,7 @@ import { cents, money, paymentMethods } from "../../lib/money";
 import type { User } from "../../lib/types";
 
 type Entry = {
-  source: "manual" | "folio" | "stay" | "pop";
+  source: "manual" | "folio" | "stay" | "pop" | "refund";
   id: number;
   day: string;
   kind: "income" | "expense";
@@ -19,8 +19,9 @@ type Entry = {
   voided: number;
   recorded_at: string | null;
 };
-type Turn = { id: number; started_at: string; ended_at: string | null; author: string };
-const sources = { manual: "Manual", folio: "Hoja de consumo", stay: "Cobro de estadía", pop: "Venta Pub" };
+type Turn = { id: number; started_at: string; expires_at: string; ended_at: string | null; author: string };
+const sources = { manual: "Manual", folio: "Hoja de consumo", stay: "Cobro de estadía", pop: "Venta Pub", refund: "Reembolso" };
+const transferMethods = paymentMethods.filter((method) => method !== "Efectivo");
 
 export function Cash({ user }: { user: User }) {
   const admin = user.role !== "receptionist";
@@ -32,7 +33,9 @@ export function Cash({ user }: { user: User }) {
   const [kind, setKind] = useState("income");
   const movementKind = box === "pub" ? "expense" : kind;
   const showForm = view === "current" && (box === "petty" || admin);
-  const [method, setMethod] = useState("Efectivo");
+  const [account, setAccount] = useState<"cash" | "transfer">("cash");
+  const [transferMethod, setTransferMethod] = useState("QR");
+  const method = account === "cash" ? "Efectivo" : transferMethod;
   const [amount, setAmount] = useState("");
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [version, setVersion] = useState(0);
@@ -83,22 +86,27 @@ export function Cash({ user }: { user: User }) {
     });
     return () => { active = false; };
   }, [path, version]);
+  useEffect(() => {
+    if (view !== "current" || !turn) return;
+    const timer = window.setTimeout(() => setVersion((value) => value + 1),
+      Math.max(1000, Date.parse(turn.expires_at) - Date.now() + 100));
+    return () => window.clearTimeout(timer);
+  }, [view, turn]);
   const base = /^\d{1,7}([.,]\d{1,2})?$/.test(amount) ? cents(amount) : 0;
   const incomeByMethod = new Map<string, number>();
-  let cashIncome = 0;
-  let cashExpenses = 0;
-  let otherExpenses = 0;
-  for (const row of entries ?? []) {
+  let income = 0;
+  let expenses = 0;
+  const accountEntries = entries?.filter((row) => (row.method === "Efectivo") === (account === "cash"));
+  for (const row of accountEntries ?? []) {
     if (row.voided) continue;
     if (row.kind === "income") {
-      cashIncome += row.physical_cents;
+      income += row.base_cents;
       incomeByMethod.set(row.method, (incomeByMethod.get(row.method) ?? 0) + row.base_cents);
     } else {
-      cashExpenses += row.physical_cents;
-      otherExpenses += row.base_cents - row.physical_cents;
+      expenses += row.base_cents;
     }
   }
-  const visibleEntries = entries?.filter((row) => movementFilter === "all" || row.kind === movementFilter);
+  const visibleEntries = accountEntries?.filter((row) => movementFilter === "all" || row.kind === movementFilter);
   const total = (amount: number) => entries ? money(amount) : "—";
   function switchBox(next: typeof box) {
     if (box === next) return;
@@ -173,27 +181,26 @@ export function Cash({ user }: { user: User }) {
             onClick={() => void loadTurns(turns.at(-1)?.id)}>Ver turnos anteriores</button>}
         </div>}
         {turn && <p className="muted turn-meta">
-          {turn.author} · Apertura {localDateTime(turn.started_at)} · {turn.ended_at ? `Cierre ${localDateTime(turn.ended_at)}` : "Turno abierto"}
+          {turn.author} · Apertura {localDateTime(turn.started_at)} · {turn.ended_at ? `Cierre ${localDateTime(turn.ended_at)}` : `Turno abierto hasta ${localDateTime(turn.expires_at)}`}
         </p>}
-        <section className="ledger-summary" aria-label="Efectivo en caja">
-          <h3>Efectivo en caja</h3>
+        <div className="tabs ledger-tabs" role="group" aria-label="Cuenta por medio de pago">
+          <button className={account === "cash" ? "active" : ""} aria-pressed={account === "cash"}
+            onClick={() => setAccount("cash")} disabled={busy}>Efectivo</button>
+          <button className={account === "transfer" ? "active" : ""} aria-pressed={account === "transfer"}
+            onClick={() => setAccount("transfer")} disabled={busy}>Transferencia</button>
+        </div>
+        <section className={`ledger-summary${account === "transfer" ? " ledger-other" : ""}`} aria-label={account === "cash" ? "Efectivo en caja" : "Transferencia"}>
+          <h3>{account === "cash" ? "Efectivo en caja" : "Transferencia"}</h3>
           <div className="ledger-totals">
-            <span>Ingresos en efectivo <strong>{total(cashIncome)}</strong></span>
-            <span className="ledger-expenses">Egresos en efectivo <strong>{total(cashExpenses)}</strong></span>
-            <span className="ledger-net">Neto en efectivo <strong>{total(cashIncome - cashExpenses)}</strong></span>
+            <span>Ingresos <strong>{total(income)}</strong></span>
+            <span className="ledger-expenses">Egresos <strong>{total(expenses)}</strong></span>
+            <span className="ledger-net">Neto del período <strong>{total(income - expenses)}</strong></span>
           </div>
-          {byTurn && <p className="muted">Saldo inicial del turno · {money(0)}</p>}
-        </section>
-        <section className="ledger-summary ledger-other" aria-label="Movimientos fuera del efectivo">
-          <h3>Fuera del efectivo</h3>
-          <div className="ledger-totals">
-            {["QR", "Tarjeta", "Transferencia", "Otro"].map((medium) => <span key={medium}>
-              Ingresos por {medium === "Otro" ? "otros medios" : medium}
-              <strong>{total(incomeByMethod.get(medium) ?? 0)}</strong>
-            </span>)}
-            <span className="ledger-expenses">Egresos fuera del efectivo <strong>{total(otherExpenses)}</strong></span>
-          </div>
-          <p className="muted">Importes base. Los recargos figuran en cada movimiento.</p>
+          {account === "cash" && byTurn && <p className="muted">Saldo inicial del turno · {money(0)}</p>}
+          {account === "transfer" && <p className="muted">
+            {transferMethods.map((medium) => `${medium} ${total(incomeByMethod.get(medium) ?? 0)}`).join(" · ")}
+            {" · Ingresos por medio al importe base"}
+          </p>}
         </section>
         <div className="tabs ledger-tabs" role="group" aria-label="Tipo de movimiento">
           {([["all", "Todos"], ["income", "Ingresos"], ["expense", "Egresos"]] as const).map(([value, label]) =>
@@ -201,7 +208,7 @@ export function Cash({ user }: { user: User }) {
               aria-pressed={movementFilter === value} onClick={() => setMovementFilter(value)}>{label}</button>)}
         </div>
         {!entries && !error && <p className="quiet-state" role="status">Cargando movimientos…</p>}
-        {visibleEntries?.length === 0 && <p className="quiet-state">{entries?.length ? "No hay movimientos de este tipo." : "Aún no hay movimientos en este período."}</p>}
+        {visibleEntries?.length === 0 && <p className="quiet-state">{accountEntries?.length ? "No hay movimientos de este tipo." : "Aún no hay movimientos en esta cuenta."}</p>}
         {!!visibleEntries?.length && <div className="table-scroll">
           <table>
             <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe base</th>{admin && <th>Acción</th>}</tr></thead>
@@ -231,7 +238,9 @@ export function Cash({ user }: { user: User }) {
           </select></label>}
           <label>Concepto<input name="detail" placeholder="Ej. Compra de insumos" maxLength={160} required /></label>
           <label>Importe base (Bs)<input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" pattern="[0-9]{1,7}([.,][0-9]{1,2})?" required /></label>
-          <label>Medio de pago<select value={method} onChange={(e) => setMethod(e.target.value)}>{paymentMethods.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label>Medio de pago<select value={method} onChange={(e) => setTransferMethod(e.target.value)}>
+            {(account === "cash" ? ["Efectivo"] : transferMethods).map((item) => <option key={item}>{item}</option>)}
+          </select></label>
           {movementKind === "income" && method === "Tarjeta" && <CardCharge base={base} />}
           <button className="button primary" disabled={busy}><Icon name="plus" size={16} /> Registrar</button>
         </form>

@@ -34,7 +34,8 @@ En desarrollo: frontend `127.0.0.1:5173` con proxy de `/api` hacia `127.0.0.1:30
 - `guest_rates`: sugerencias del talonario por habitación, PAX y desayuno.
 - `cash_entries`: ingresos y egresos manuales con anulación administrativa. La consulta de caja también incluye los abonos y ventas POP en su fecha de cobro.
 - `pop_products` y `pop_movements`: catálogo, stock y movimientos. La venta guarda precio, cantidad y recargo antes de actualizar existencias.
-- `cash_turns`: usuario, apertura, vencimiento y cierre de cada sesión. Los movimientos manuales, abonos y ventas se vinculan al turno que los registra. Los movimientos anteriores a la migración conservan su fecha contable.
+- `shift_schedules` guarda horarios semanales por usuario. `cash_turns` guarda instancias de esos horarios y tramos operativos fuera de horario. Los movimientos se vinculan a la instancia en curso.
+- `folio_refunds` y `folio_refund_allocations` guardan el egreso y su aplicación a los cobros originales. `folio_payment_balances` calcula el importe retenido para la hoja y la reserva.
 - `audit_log`: acción, registro, usuario y hora. Las operaciones de reservas, hojas y caja guardan valores anterior y nuevo dentro de su transacción. El visor administrativo protege la identidad del superadministrador según el rol.
 - `lodging_exchange_rate`: tipo de cambio de respaldo configurado por administración, en unidades de 0,0001 Bs por USD. La conversión prioriza el dato oficial del BCB vigente, aunque provenga del caché. El importe aplicado se guarda en centavos de boliviano.
 
@@ -67,6 +68,8 @@ Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "err
 | `POST /api/folios/:id/services`, `POST /api/folios/:id/payments` | Registrar servicio o abono por cargo |
 | `POST /api/folios/:id/payments/:paymentId/void` | Anular abono, solo administración |
 | `GET /api/cash/turns`, `GET /api/cash/turns/:id` | Listado paginado y movimientos por turno. `current` resuelve el de la sesión. Recepción consulta sus propios turnos |
+| `GET/POST /api/shifts`, `PUT /api/shifts/:id` | Consultar y ajustar el horario semanal desde administración |
+| `POST /api/folios/:id/payments/:paymentId/refunds` y variante `stay-payments` | Registrar un reembolso por importe base y motivo desde administración |
 | `GET /api/cash/daily`, `GET /api/cash/monthly?month=AAAA-MM` | Caja por fecha para administración. La ruta diaria devuelve el turno actual para recepción. Cada movimiento incluye el importe base y su aporte al efectivo físico |
 | `POST /api/cash`, `POST /api/cash/:id/void` | Registrar movimiento manual y anularlo con permiso administrativo. Caja Pub admite egresos manuales y recibe ingresos nuevos desde ventas de inventario |
 | `GET /api/bcb/usd` | Cotización oficial, vigencia, disponibilidad y tipo de cambio aplicable a tarifas |
@@ -79,7 +82,7 @@ La interfaz no expone aún renombrar habitaciones aunque la API lo permite. No h
 
 ## Acceso y operación local
 
-Contraseñas con scrypt, salt aleatorio y comparación constante. Sesiones aleatorias en memoria, cookie HttpOnly/SameSite=Strict y duración de 12 horas. Cada sesión abre un turno con saldo inicial cero. El turno termina al salir, vencer la sesión, desactivar al usuario o detener el servidor. Si el proceso se interrumpe, el siguiente arranque cierra los turnos abiertos con la hora de arranque o el vencimiento, lo que ocurra primero. Roles consultados en cada petición. Inicio de sesión limitado a ocho fallos por IP en 15 minutos. Los controles de Host y Origin acotan acceso al equipo local y puertos conocidos.
+Contraseñas con scrypt, salt aleatorio y comparación constante. Sesiones aleatorias en memoria, cookie HttpOnly/SameSite=Strict y duración de 12 horas. La caja resuelve la instancia de turno por usuario y horario en cada petición autenticada. La instancia persiste hasta el fin del tramo, incluso al salir de la sesión o reiniciar la aplicación. Los ajustes del calendario se aplican a los próximos turnos. Roles consultados en cada petición. Inicio de sesión limitado a ocho fallos por IP en 15 minutos. Los controles de Host y Origin acotan acceso al equipo local y puertos conocidos.
 
 No hay cifrado del archivo SQLite: la protección del equipo y los respaldos sigue siendo necesaria. No exponer el servidor a otras interfaces de red. Las medidas actuales son para un único equipo local; compartir en LAN requiere una revisión específica.
 
@@ -87,4 +90,4 @@ No hay cifrado del archivo SQLite: la protección del equipo y los respaldos sig
 
 Esquema inicial en `backend/src/core/schema.sql`. Las migraciones usan transacciones y `PRAGMA user_version`. La 002 reconstruye la tabla de reservas conservando sus claves y valida referencias con `foreign_key_check` antes de confirmar. La 003 agrega el enlace de respuesta en Novedades cuando falta. Respaldar la base antes de actualizar. `ATATAU_DB` permite bases temporales para pruebas.
 
-Los abonos vigentes bloquean eliminar una fecha pagada en parte o por completo y modificar la tarifa de esa reserva. El API valida el saldo y escribe el abono dentro de una transacción. La comisión de tarjeta se guarda en centavos aparte del principal. Caja consulta el importe base en hojas, ventas POP e ingresos manuales. Una anulación se refleja en el movimiento y neto del turno original, y la auditoría guarda el usuario y hora de la anulación. Quedan pendientes los reembolsos, el conteo físico para arqueo y la integración real de canales.
+Los abonos vigentes bloquean eliminar una fecha pagada en parte o por completo y modificar su tarifa. El API valida el saldo y escribe el abono dentro de una transacción. La comisión de tarjeta se guarda aparte del principal. Caja consulta el importe base en hojas, ventas POP e ingresos manuales. Los reembolsos registran una salida en el turno actual por el medio original y reducen el importe retenido en la hoja. Quedan pendientes el conteo físico para arqueo y la integración real de canales.

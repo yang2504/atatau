@@ -6,7 +6,8 @@ import { CardCharge } from "../../components/CardCharge";
 import { ReservationStaff } from "../reservations/ReservationStaff";
 import type { Data, Folio, FolioEntry, Payment, StayPayment, User } from "../../lib/types";
 
-type FolioDetails = { entries: FolioEntry[]; stay_payments: StayPayment[] };
+type Refund = { id: number; day: string; payment_id: number; amount_cents: number; folio_cents: number; reason: string; method: string; author: string };
+type FolioDetails = { entries: FolioEntry[]; stay_payments: StayPayment[]; refunds: Refund[] };
 
 export function FolioSheet({
   folio,
@@ -25,6 +26,7 @@ export function FolioSheet({
   const entries = details?.entries;
   const [payment, setPayment] = useState<FolioEntry | null>(null);
   const [editing, setEditing] = useState<{ payment: Payment; group: boolean } | null>(null);
+  const [refunding, setRefunding] = useState<{ payment: Payment; group: boolean } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("Efectivo");
   const [amountText, setAmountText] = useState("");
   const [voiding, setVoiding] = useState<number | null>(null);
@@ -99,30 +101,43 @@ export function FolioSheet({
     setEditing(null);
     setPayment(null);
     setVoiding(null);
+    setRefunding(null);
+  }
+  function submitRefund(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!refunding) return;
+    const fields = new FormData(event.currentTarget);
+    void save(paymentPath(refunding.payment, refunding.group) + "/refunds", () => ({
+      amount_cents: cents(String(fields.get("amount"))),
+      reason: fields.get("reason"),
+    }), closePayment);
   }
   function paymentActions(record: Payment, group = false) {
     if (record.voided || user.role === "receptionist") return null;
     return (
       <div className="row-actions">
-        {user.role === "superadmin" && <button
+        {record.retained_cents > 0 && <button type="button" className="text-button" disabled={busy}
+          onClick={() => { closePayment(); setRefunding({ payment: record, group }); }}>Reembolsar</button>}
+        {record.retained_cents === record.amount_cents && user.role === "superadmin" && <button
           type="button" className="text-button" disabled={busy}
           onClick={() => {
             setPayment(null);
             setVoiding(null);
+            setRefunding(null);
             setEditing({ payment: record, group });
             setPaymentMethod(record.method);
             setAmountText((record.amount_cents / 100).toFixed(2));
           }}>
           Editar abono
         </button>}
-        <button type="button" className="text-button" disabled={busy}
+        {record.retained_cents === record.amount_cents && <button type="button" className="text-button" disabled={busy}
           onClick={() => {
             if (voiding === record.id)
               void save(paymentPath(record, group) + "/void", () => ({}), closePayment);
             else setVoiding(record.id);
           }}>
           {voiding === record.id ? "Confirmar anulación" : "Anular abono"}
-        </button>
+        </button>}
       </div>
     );
   }
@@ -170,12 +185,35 @@ export function FolioSheet({
         <h3>Cobros de estadía</h3>
         {details.stay_payments.map((record) => <article key={record.id} className="form-note">
           <strong>{money(record.amount_cents)} · {record.method}</strong>
-          <p>{shortDate(record.day)} · {record.author}{record.voided ? " · Anulado" : ""}</p>
+          <p>{shortDate(record.day)} · Cobrado por <strong>{record.author}</strong>{record.voided ? " · Anulado" : ""}</p>
+          {record.retained_cents < record.amount_cents && <p>Reembolsado {money(record.amount_cents - record.retained_cents)}</p>}
           {record.folio_cents !== record.amount_cents && <p>Aplicado a esta hoja {money(record.folio_cents)}</p>}
           {record.surcharge_cents > 0 && <p>Comisión {money(record.surcharge_cents)} · Cobrado {money(record.amount_cents + record.surcharge_cents)}</p>}
           {paymentActions(record, true)}
         </article>)}
       </section>}
+      {!!details?.refunds.length && <section className="folio-form form-stack">
+        <h3>Reembolsos registrados</h3>
+        {details.refunds.map((refund) => <article key={refund.id} className="form-note">
+          <strong>{money(refund.amount_cents)} · {refund.method}</strong>
+          <p>{shortDate(refund.day, true)} · {refund.author} · Cobro #{refund.payment_id}</p>
+          <p>{refund.reason}</p>
+          {refund.folio_cents !== refund.amount_cents && <p>Aplicado a esta hoja {money(refund.folio_cents)}</p>}
+        </article>)}
+      </section>}
+      {refunding && <form key={refunding.payment.id} className="form-stack folio-form" onSubmit={submitRefund}>
+        <h3>Registrar reembolso</h3>
+        <p>Disponible {money(refunding.payment.retained_cents)} · {refunding.payment.method}</p>
+        {refunding.group && <p>Se descuenta de las últimas partidas de este cobro de estadía.</p>}
+        <div className="form-grid">
+          <label>Importe a devolver (Bs)<input name="amount" inputMode="decimal" pattern="[0-9]{1,9}([.,][0-9]{1,2})?" required autoFocus /></label>
+          <label>Motivo<input name="reason" maxLength={160} required /></label>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="button secondary" onClick={closePayment} disabled={busy}>Cancelar</button>
+          <button className="button primary" disabled={busy}>Registrar reembolso</button>
+        </div>
+      </form>}
       {entries && (
         <section className="folio-movements">
           <h3>Detalle de cargos</h3>
@@ -195,7 +233,7 @@ export function FolioSheet({
             </thead>
             <tbody>
               {entries.map((row) => {
-                const cashiers = [...new Set(row.payments.filter((p) => !p.voided).map((p) => p.author))];
+                const cashiers = row.cashiers;
                 return <tr key={row.lodging_day ?? row.service_id}>
                   <td>{shortDate(row.day, true)}</td>
                   <td>
@@ -228,6 +266,7 @@ export function FolioSheet({
                           setAmountText((row.balance_cents / 100).toFixed(2));
                           setPaymentMethod("Efectivo");
                           setVoiding(null);
+                          setRefunding(null);
                         }}
                       >
                         Abonar
@@ -242,6 +281,7 @@ export function FolioSheet({
                             {p.method} · {p.author}
                             {p.surcharge_cents > 0 && ` · ${p.method === "Tarjeta" ? "Comisión descontada" : "Recargo histórico"} ${money(p.surcharge_cents)} · Cobrado ${money(p.amount_cents + p.surcharge_cents)}`}
                             {p.voided ? " · Anulado" : ""}
+                            {p.retained_cents < p.amount_cents && ` · Reembolsado ${money(p.amount_cents - p.retained_cents)}`}
                             {paymentActions(p)}
                           </div>
                         ))}
@@ -310,7 +350,7 @@ export function FolioSheet({
           </div>
         </form>
       )}
-      {!cancelled && !payment && !editing && (
+      {!cancelled && !payment && !editing && !refunding && (
         <details className="folio-form">
           <summary>Agregar servicio</summary>
           <form className="form-stack" onSubmit={submitService}>

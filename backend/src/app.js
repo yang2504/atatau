@@ -7,6 +7,7 @@ import { platformModule } from "./modules/platforms.js";
 import { noteModule } from "./modules/notes.js";
 import { folioModule } from "./modules/folios.js";
 import { cashModule } from "./modules/cash.js";
+import { shiftModule } from "./modules/shifts.js";
 import { popModule } from "./modules/pop.js";
 import { bcbRateHandler } from "./modules/bcb.js";
 import { audit, integer } from "./core/validation.js";
@@ -77,7 +78,7 @@ export function createApp(db) {
         CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE COALESCE(a.actor_name,u.name) END AS author
       FROM audit_log a JOIN users u ON u.id=a.user_id
       WHERE a.id<? AND a.entity IN ('reservation','folio','folio_service','folio_payment',
-        'cash_entry','pop_movement','lodging_exchange_rate')
+        'cash_entry','pop_movement','lodging_exchange_rate','shift_schedule','folio_refund')
       ORDER BY a.id DESC LIMIT 50`).all(canSeeSuperadmin(req.user), before);
     res.json(rows.map(({ before_json, after_json, ...row }) => ({
       ...row, before: JSON.parse(before_json), after: JSON.parse(after_json),
@@ -90,6 +91,7 @@ export function createApp(db) {
   app.use("/api/notes", noteModule(db));
   app.use("/api/folios", folioModule(db));
   app.use("/api/cash", cashModule(db, users.admin));
+  app.use("/api/shifts", shiftModule(db, users.admin));
   app.use(["/api/pub", "/api/pop"], popModule(db, users.admin));
   app.use("/api", (req, res) =>
     res.status(404).json({ error: "Ruta inexistente." }),

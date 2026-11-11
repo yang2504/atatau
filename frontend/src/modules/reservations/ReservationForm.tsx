@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { UsdConversion } from "../../components/UsdConversion";
 import type { Data, Draft, Reservation } from "../../lib/types";
 import { api, today, addDays, daysBetween, statusNames } from "../../lib/api";
-import { Modal, ErrorBox } from "../../components/UI";
+import { Modal, ErrorBox, Icon } from "../../components/UI";
 import { StayDates } from "./StayDates";
 import { ReservationStaff } from "./ReservationStaff";
 import { cents, money, paymentMethods } from "../../lib/money";
@@ -15,12 +15,14 @@ export function ReservationForm({
   draft,
   onClose,
   onSaved,
+  onOpenFolio,
 }: {
   data: Data;
   reservation?: Reservation;
   draft?: Draft;
   onClose: () => void;
   onSaved: () => Promise<void>;
+  onOpenFolio?: (reservation: Reservation) => void;
 }) {
   const r = reservation;
   const initialUnit = r?.unit_ids[0] ?? draft?.unit_id;
@@ -280,7 +282,13 @@ export function ReservationForm({
         {breakfast === 1 && nights > 0 && <p className="form-note">
           {pax * nights} desayunos en total · {pax} por mañana, del {addDays(start, 1)} al {end}.
         </p>}
-        {r && <ReservationStaff reservation={r} />}
+        {r && <>
+          <ReservationStaff reservation={r} />
+          {onOpenFolio && <div className="row-actions">
+            <button type="button" className="button secondary compact" disabled={busy}
+              onClick={() => onOpenFolio(r)}><Icon name="receipt" size={15} /> Ver hojas de consumo</button>
+          </div>}
+        </>}
         <div className="form-grid">
           <label>
             Tarifa {r && Object.keys(r.night_rates).length > 0 ? "original " : ""}por noche para {pax} {pax === 1 ? "persona" : "personas"}{" "}

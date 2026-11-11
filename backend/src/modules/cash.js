@@ -19,6 +19,10 @@ const ledger = (where) => `WITH ledger AS (
   FROM folio_payments leader JOIN folios f ON f.id=leader.folio_id
   WHERE leader.group_id=leader.id
   UNION ALL
+  SELECT 'refund',r.id,r.day,'expense','Reembolso · ' || r.reason,
+    r.amount_cents,0,p.method,r.user_id,0,'petty',r.turn_id
+  FROM folio_refunds r JOIN folio_payments p ON p.id=r.payment_id
+  UNION ALL
   SELECT 'pop',id,day,'income',detail,base_cents,surcharge_cents,method,user_id,0,'pub',turn_id
   FROM pop_movements WHERE kind='sale'
 )
@@ -27,7 +31,7 @@ SELECT ledger.source,ledger.id,ledger.day,ledger.kind,ledger.detail,ledger.base_
   ledger.base_cents AS cash_cents,
   CASE WHEN ledger.method='Efectivo' THEN ledger.base_cents ELSE 0 END AS physical_cents,
   (SELECT a.created_at FROM audit_log a WHERE a.entity_id=ledger.id AND a.entity=
-    CASE ledger.source WHEN 'manual' THEN 'cash_entry' WHEN 'pop' THEN 'pop_movement'
+    CASE ledger.source WHEN 'manual' THEN 'cash_entry' WHEN 'pop' THEN 'pop_movement' WHEN 'refund' THEN 'folio_refund'
       ELSE 'folio_payment' END ORDER BY a.id LIMIT 1) AS recorded_at,
   CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE COALESCE(t.user_name,u.name) END AS author
 FROM ledger JOIN users u ON u.id=ledger.user_id
@@ -51,7 +55,7 @@ export function cashModule(db, admin) {
     const day = localDay();
     period(req, res, day, day + "T");
   });
-  const turnColumns = `t.id,t.started_at,
+  const turnColumns = `t.id,t.started_at,t.expires_at,
     COALESCE(t.closed_at, CASE WHEN t.expires_at<=? THEN t.expires_at END) AS ended_at,
     CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE t.user_name END AS author`;
   router.get("/turns", (req, res) => {
