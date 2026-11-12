@@ -109,6 +109,13 @@ export function openDatabase(
       db.exec("PRAGMA user_version = 12");
     });
   }
+  if (db.prepare("PRAGMA user_version").get().user_version < 13) {
+    transaction(db, () => {
+      if (db.prepare("PRAGMA user_version").get().user_version >= 13) return;
+      db.exec(readFileSync(new URL("./013-group-reservations.sql", import.meta.url), "utf8"));
+      db.exec("PRAGMA user_version = 13");
+    });
+  }
   db.prepare(
     "INSERT OR IGNORE INTO platforms (id,name,active) VALUES (1,'Sin reserva / directo',1),(2,'Booking',1),(3,'Hostelworld',1)",
   ).run();

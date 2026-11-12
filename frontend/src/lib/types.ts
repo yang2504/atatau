@@ -30,6 +30,7 @@ export type Room = {
   guest_rates: { pax: number; breakfast: number; nightly_cents: number }[];
 };
 export type Platform = { id: number; name: string; active: number };
+export type RoomAssignment = { room_id: number; pax: number; unit_ids: number[] };
 export type Reservation = {
   id: number;
   guest_name: string;
@@ -53,6 +54,7 @@ export type Reservation = {
   paid_nights: string[];
   night_rates: Record<string, number>;
   unit_ids: number[];
+  room_assignments: RoomAssignment[];
   guests: { id: number; name: string }[];
 };
 export type Note = {

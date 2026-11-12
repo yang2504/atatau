@@ -754,6 +754,78 @@ test("reservas, permisos y persistencia transaccional", async () => {
       body: "{}",
     });
     assert.equal(csrf.status, 403);
+    const secondDorm = await request("/rooms", { name: "Dormitorio norte", type: "dorm", capacity: 2 });
+    assert.equal(secondDorm.status, 201);
+    const dormUnit = (await request("/rooms")).body.find((item) => item.id === secondDorm.body.id).units[0].id;
+    const bookingGroup = {
+      ...draft, guest_name: "Encargada del grupo", guest_names: ["Ana", "Bruno", "Clara", "Diego"],
+      check_in: "2027-10-03", check_out: "2027-10-05", pax: 4, breakfast: 1,
+      nightly_cents: 30000, platform_id: 1, status: "pending",
+      room_assignments: [
+        { room_id: room.body.id, pax: 2, unit_ids: draft.unit_ids },
+        { room_id: dorm.body.id, pax: 1, unit_ids: [rooms[1].units[0].id] },
+        { room_id: secondDorm.body.id, pax: 1, unit_ids: [dormUnit] },
+      ],
+      advance_payment: { method: "QR", amount_cents: 35000, expected_balance_cents: 60000 },
+    };
+    const reservationCount = () => db.prepare("SELECT COUNT(*) AS n FROM reservations").get().n;
+    const initialCount = reservationCount();
+    const wrongCapacity = bookingGroup.room_assignments.map((item, i) => ({ ...item, pax: i === 0 ? 3 : item.pax }));
+    assert.equal((await request("/reservations", { ...bookingGroup, pax: 5, room_assignments: wrongCapacity })).status, 400);
+    assert.equal((await request("/reservations", { ...bookingGroup, folio_mode: "individual" })).status, 400);
+    const wrongBalance = await request("/reservations", {
+      ...bookingGroup, advance_payment: { ...bookingGroup.advance_payment, expected_balance_cents: 50000 },
+    });
+    assert.equal(wrongBalance.status, 409, wrongBalance.body.error);
+    assert.equal(reservationCount(), initialCount);
+
+    const groupCreated = await request("/reservations", bookingGroup);
+    assert.equal(groupCreated.status, 201);
+    const groupId = groupCreated.body.id;
+    const savedGroup = (await request("/reservations")).body.find((item) => item.id === groupId);
+    assert.deepEqual(savedGroup.room_assignments, bookingGroup.room_assignments);
+    assert.equal(savedGroup.lodging_paid_cents, 35000);
+    assert.equal((await request("/reservations", {
+      ...draft, check_in: bookingGroup.check_in, check_out: bookingGroup.check_out,
+      pax: 1, platform_id: 1, unit_ids: [dormUnit],
+    })).status, 409);
+    const breakfasts = (await request("/reservations/breakfast?day=2027-10-04")).body
+      .filter((item) => item.reservation_id === groupId);
+    assert.equal(breakfasts.length, 4);
+    assert.equal(breakfasts.find((item) => item.name === "Diego").room_name, "Dormitorio norte");
+    const groupSheets = (await request("/folios")).body.filter((item) => item.reservation_id === groupId);
+    assert.equal(groupSheets.length, 1);
+    assert.equal(groupSheets[0].title, "Encargada del grupo");
+    const groupSheet = `/folios/${groupSheets[0].id}`;
+    const details = (await request(groupSheet)).body;
+    const advance = details.stay_payments[0];
+    assert.equal(details.stay_payments.length, 1);
+    assert.deepEqual(details.entries.map((entry) => entry.balance_cents), [0, 25000]);
+    const cashGroup = (await request("/cash/daily")).body.filter((item) => item.source === "stay" && item.id === advance.id);
+    assert.equal(cashGroup.length, 1);
+    assert.equal(cashGroup[0].base_cents, 35000);
+    assert.equal(cashGroup[0].physical_cents, 0);
+    const nextAdvance = { day: localDay(), method: "Efectivo", amount_cents: 5000, expected_balance_cents: 25000 };
+    assert.equal((await request(groupSheet + "/stay-payments", nextAdvance)).status, 201);
+    assert.equal((await request(groupSheet + "/stay-payments", nextAdvance)).status, 409);
+    assert.equal((await request(groupSheet + `/stay-payments/${advance.id}/refunds`, {
+      amount_cents: 1000, reason: "Devolución parcial de prueba",
+    })).status, 201);
+    const groupRoute = `/reservations/${groupId}`;
+    const groupEdit = { ...bookingGroup, advance_payment: undefined };
+    assert.equal((await request(groupRoute + "/extend", {
+      expected_check_in: bookingGroup.check_in, expected_check_out: bookingGroup.check_out,
+      check_in: bookingGroup.check_in, check_out: "2027-10-06", extension_nightly_cents: 25000,
+    })).status, 200);
+    assert.equal((await request(groupRoute, { ...groupEdit, check_out: "2027-10-06", status: "in_house" }, "PUT")).status, 200);
+    assert.equal((await request(groupRoute, { ...groupEdit, check_out: "2027-10-06", status: "cancelled" }, "PUT")).status, 200);
+    assert.equal((await request(groupSheet + "/stay-payments", nextAdvance)).status, 409);
+    const historicalSheet = (await request(groupSheet)).body;
+    assert.equal(historicalSheet.stay_payments.length, 2);
+    assert.equal(historicalSheet.refunds.length, 1);
+    assert.equal((await request("/reservations", {
+      ...draft, check_in: bookingGroup.check_in, check_out: bookingGroup.check_out, pax: 1, platform_id: 1, unit_ids: [dormUnit],
+    })).status, 201);
     assert.equal((await request("/auth/logout", {})).status, 200);
     assert.equal((await request("/rooms")).status, 401);
   } finally {

@@ -248,6 +248,10 @@ export default function App() {
     else setFolioReservation(reservation);
   }
   async function move(r: Reservation, unit: number, date: string) {
+    if (r.room_assignments.length) {
+      setEditor({ reservation: r });
+      return;
+    }
     if (r.unit_ids.length !== 1) {
       setEditor({ reservation: r });
       setError(
@@ -625,7 +629,7 @@ export default function App() {
                         <tr key={r.id}>
                           <td>
                             <strong>{r.guest_name}</strong>
-                            <small className="cell-sub">Reserva #{r.id}</small>
+                            <small className="cell-sub">{r.room_assignments.length ? "Grupo" : "Reserva"} #{r.id}</small>
                           </td>
                           <td>
                             {shortDate(r.check_in)} → {shortDate(r.check_out)}
@@ -641,8 +645,9 @@ export default function App() {
                                 ),
                               )
                               .map((room) => (
-                                <span key={room.id}>
+                                <div key={room.id}>
                                   {room.name}
+                                  {r.room_assignments.length > 0 && ` · ${r.room_assignments.find((place) => place.room_id === room.id)?.pax} PAX`}
                                   <small className="cell-sub">
                                     {room.type === "dorm"
                                       ? room.units
@@ -653,7 +658,7 @@ export default function App() {
                                           .join(", ")
                                       : "Habitación completa"}
                                   </small>
-                                </span>
+                                </div>
                               ))}
                           </td>
                           <td>{r.pax}<small className="cell-sub">{r.breakfast ? "Con desayuno" : "Sin desayuno"}</small></td>
@@ -703,17 +708,18 @@ export default function App() {
         ) : <p>No hay plazas disponibles para esta noche.</p> : summaryReservations.length ? (
           <div className="agenda-list summary-reservations">
             {summaryReservations.map((reservation) => {
-              const room = data.rooms.find((item) => item.units.some((unit) => reservation.unit_ids.includes(unit.id)));
-              const beds = room?.type === "dorm"
-                ? room.units.filter((unit) => reservation.unit_ids.includes(unit.id)).map((unit) => unit.label).join(", ")
-                : "";
+              const places = data.rooms.flatMap((room) => {
+                const units = room.units.filter((unit) => reservation.unit_ids.includes(unit.id));
+                return units.length ? [room.type === "dorm"
+                  ? `${room.name} (${units.map((unit) => unit.label).join(", ")})` : room.name] : [];
+              });
               return <button type="button" key={reservation.id} onClick={() => {
                 setSummary(null);
                 setEditor({ reservation });
               }}>
                 <span className="summary-guest">
                   <strong>{reservation.guest_name} · #{reservation.id}</strong>
-                  <small>{[room?.name, beds, `${reservation.pax} PAX`].filter(Boolean).join(" · ")}</small>
+                  <small>{[...places, `${reservation.pax} PAX`].join(" · ")}</small>
                   <small>{shortDate(reservation.check_in)} → {shortDate(reservation.check_out)}
                     {summary === "arrivals" && reservation.arrival_time && ` · Llegada prevista ${reservation.arrival_time}`}</small>
                   {reservation.guests.length > 1 && <small>
@@ -763,7 +769,7 @@ export default function App() {
       )}
       {extending && <ExtendStay
         reservation={extending}
-        room={data.rooms.find((room) => room.units.some((unit) => extending.unit_ids.includes(unit.id)))}
+        rooms={data.rooms.filter((room) => room.units.some((unit) => extending.unit_ids.includes(unit.id)))}
         onClose={() => setExtending(null)}
         onSaved={onSaved}
       />}

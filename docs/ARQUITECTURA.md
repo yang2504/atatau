@@ -43,7 +43,9 @@ En desarrollo: frontend `127.0.0.1:5173` con proxy de `/api` hacia `127.0.0.1:30
 
 `saveReservation` abre `BEGIN IMMEDIATE`, valida fechas, plataforma, camas y cruces, y escribe reserva, asignaciones, huéspedes, hojas y auditoría. Un error revierte toda la operación. No hay llamadas asíncronas dentro de esa transacción. SQLite también aplica claves foráneas y restricciones de capacidad básica. La regla de cruces se aplica en la aplicación; no escribir asignaciones con SQL directo desde otros módulos.
 
-El día de checkout queda libre para otra entrada. Una privada no se comparte entre reservas. En dormitorios, PAX debe coincidir con el número de camas. El alcance inicial permite una habitación por reserva; grupos repartidos y una sola cuenta requerirán una entidad de grupo o una ampliación explícita del contrato.
+El día de checkout queda libre para otra entrada. Una privada no se comparte entre reservas. En dormitorios, los PAX asignados deben coincidir con el número de camas. Una reserva de grupo mantiene el mismo rango y estado para todos sus cuartos, y usa una sola hoja de consumo a nombre del encargado. La migración 013 añade `allocations.pax` para guardar las plazas por unidad. Las reservas anteriores conservan ese campo en `NULL`.
+
+El alta y la edición de grupos envían `room_assignments` con `room_id`, `pax` y `unit_ids` por cuarto. La API valida el PAX total, el tipo de cuenta y las asignaciones y devuelve la distribución junto con `unit_ids`. El alta puede incluir `advance_payment`. Los abonos posteriores se registran con `POST /api/folios/:id/stay-payments`, usando el saldo esperado para detectar cambios simultáneos. Ambos usan los cobros de estadía existentes y generan un solo movimiento de Caja Chica por pago.
 
 ## Contratos API
 

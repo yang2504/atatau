@@ -50,6 +50,7 @@ export function listReservations(db, full = 1) {
       checked_out_by_name: !full && check_out_role === "superadmin" ? "Atatau" : r.checked_out_by_name,
       night_rates: rates,
       paid_nights: paidNights(db, r.id, r.nightly_cents, rates),
+      room_assignments: roomAssignments(db, r.id),
       unit_ids: db
         .prepare("SELECT unit_id FROM allocations WHERE reservation_id=?")
         .all(r.id)
@@ -62,13 +63,22 @@ export function listReservations(db, full = 1) {
       };
     });
 }
+
+function roomAssignments(db, id) {
+  return db.prepare(`SELECT u.room_id, SUM(a.pax) AS pax, json_group_array(u.id ORDER BY u.id) AS unit_ids
+    FROM allocations a JOIN units u ON u.id=a.unit_id
+    WHERE a.reservation_id=? AND a.pax IS NOT NULL GROUP BY u.room_id ORDER BY u.room_id`)
+    .all(id).map((row) => ({ ...row, unit_ids: JSON.parse(row.unit_ids) }));
+}
+
 function reservationSnapshot(db, reservation, rates) {
   const { created_by, checked_in_by, ...fields } = reservation;
   return {
     ...fields,
-    units: db.prepare(`SELECT a.unit_id,u.label,room.id AS room_id,room.name AS room_name
+    units: db.prepare(`SELECT a.unit_id,u.label,room.id AS room_id,room.name AS room_name,a.pax
       FROM allocations a JOIN units u ON u.id=a.unit_id JOIN rooms room ON room.id=u.room_id
-      WHERE a.reservation_id=? ORDER BY a.unit_id`).all(fields.id),
+      WHERE a.reservation_id=? ORDER BY a.unit_id`).all(fields.id).map(({ pax, ...unit }) =>
+        pax === null ? unit : { ...unit, pax }),
     guests: db.prepare("SELECT id,name FROM guests WHERE reservation_id=? ORDER BY id").all(fields.id),
     folios: db.prepare("SELECT id,title FROM folios WHERE reservation_id=? ORDER BY id").all(fields.id),
     night_rates: rates,
@@ -81,6 +91,7 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       ? db.prepare("SELECT * FROM reservations WHERE id=?").get(id)
       : null;
     if (id && !previous) fail("Reserva inexistente.", 404);
+    const previousRooms = previous ? roomAssignments(db, id) : [];
     let extensionRate;
     if (extension) {
       if (!["pending", "confirmed", "in_house"].includes(previous.status))
@@ -95,12 +106,17 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       extensionRate = integer(body.extension_nightly_cents, "Tarifa de extensión", 0, MAX_NIGHTLY_CENTS);
       body = {
         ...previous, check_in: checkIn, check_out: checkOut,
+        room_assignments: previousRooms.length ? previousRooms : undefined,
         unit_ids: db.prepare("SELECT unit_id FROM allocations WHERE reservation_id=?")
           .all(id).map((row) => row.unit_id),
       };
     }
+    const group = body.room_assignments !== undefined &&
+      (!Array.isArray(body.room_assignments) || body.room_assignments.length > 0);
+    if (previous && group !== Boolean(previousRooms.length))
+      fail("Conserva el tipo de reserva al editar.");
     const guestName = text(body.guest_name, "Huésped", 100),
-      pax = integer(body.pax, "PAX", 1, 30);
+      pax = integer(body.pax, "PAX", 1, group ? 1000000 : 30);
     const start = date(body.check_in),
       end = date(body.check_out);
     if (end <= start) fail("La salida debe ser posterior a la entrada.");
@@ -176,16 +192,21 @@ export function saveReservation(db, body, user, id = null, extension = false) {
         !["pending", "confirmed"].includes(previous?.status)))
       fail("El cobro de la estadía solo se registra al confirmar la llegada.", 409);
     const advance = body.advance_payment;
-    if (advance != null && (previous?.status !== "pending" || status !== "pending"))
-      fail("El adelanto se registra en una reserva pendiente.", 409);
+    const canAdvance = group
+      ? !previous && ["pending", "confirmed"].includes(status)
+      : previous?.status === "pending" && status === "pending";
+    if (advance != null && !canAdvance)
+      fail(group ? "Registra nuevos abonos desde la hoja de consumo del grupo."
+        : "El adelanto se registra en una reserva pendiente.", 409);
     const breakfast = integer(body.breakfast ?? previous?.breakfast ?? 0, "Desayuno", 0, 1);
     const mode = choice(
       body.folio_mode,
       ["shared", "individual"],
       "Tipo de cuenta",
     );
+    if (group && mode !== "shared") fail("La reserva de grupo usa una sola hoja de consumo.");
     const holderInput = body.folio_holder ?? previous?.folio_holder ?? "";
-    const holder = typeof holderInput === "string" && !holderInput.trim()
+    const holder = group ? guestName : typeof holderInput === "string" && !holderInput.trim()
       ? ""
       : text(holderInput, "Encargado de la cuenta", 100);
     const sharedTitle = holder || `Grupo de ${guestName}`;
@@ -193,31 +214,57 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       typeof body.comments === "string" ? body.comments.trim() : "";
     if (comments.length > 2000)
       fail("Las observaciones admiten hasta 2000 caracteres.");
-    const unitIds = body.unit_ids;
+    const places = new Map();
+    if (group) {
+      if (!Array.isArray(body.room_assignments) || body.room_assignments.length < 2)
+        fail("Agrega al menos dos habitaciones o dormitorios a la reserva de grupo.");
+      for (const item of body.room_assignments) {
+        const roomId = integer(item?.room_id, "Habitación");
+        const count = integer(item.pax, "Personas por habitación", 1, 30);
+        if (!Array.isArray(item.unit_ids) || !item.unit_ids.length || item.unit_ids.length > 30 || places.has(roomId))
+          fail("Indica las plazas de cada habitación una sola vez.");
+        places.set(roomId, { count, unitIds: item.unit_ids });
+      }
+      if ([...places.values()].reduce((sum, place) => sum + place.count, 0) !== pax)
+        fail("El total de personas debe coincidir con la distribución por habitación.");
+    }
+    const unitIds = group ? [...places.values()].flatMap((place) => place.unitIds) : body.unit_ids;
+    const uniqueUnits = new Set(Array.isArray(unitIds) ? unitIds : []);
     if (
       !Array.isArray(unitIds) ||
       !unitIds.length ||
-      unitIds.length > 30 ||
-      new Set(unitIds).size !== unitIds.length
+      (!group && unitIds.length > 30) ||
+      uniqueUnits.size !== unitIds.length
     )
       fail("Selecciona las camas o la habitación.");
     const units = unitIds.map((id) =>
       db
         .prepare(
-          "SELECT u.*,r.type,r.active AS room_active FROM units u JOIN rooms r ON r.id=u.room_id WHERE u.id=?",
+          "SELECT u.*,r.name AS room_name,r.type,r.active AS room_active FROM units u JOIN rooms r ON r.id=u.room_id WHERE u.id=?",
         )
         .get(integer(id, "Cama")),
     );
-    const keepHistory = previous && start === previous.check_in && end === previous.check_out &&
-      (status === "cancelled" || (end <= localDay() && status === previous.status)) &&
-      db.prepare("SELECT unit_id FROM allocations WHERE reservation_id=?").all(id)
-        .filter((unit) => unitIds.includes(unit.unit_id)).length === unitIds.length &&
-      previous.pax === pax;
+    let keepHistory = false;
+    if (previous && start === previous.check_in && end === previous.check_out && previous.pax === pax &&
+        (status === "cancelled" || (end <= localDay() && status === previous.status))) {
+      const savedUnits = db.prepare("SELECT unit_id FROM allocations WHERE reservation_id=?").all(id);
+      keepHistory = savedUnits.length === uniqueUnits.size && savedUnits.every((unit) => uniqueUnits.has(unit.unit_id));
+    }
     if (units.some((u) => !u || (!keepHistory && (!u.active || !u.room_active))))
       fail("La habitación o la cama no está habilitada.");
-    if (new Set(units.map((u) => u.room_id)).size !== 1)
-      fail("Cada reserva debe asignarse a una habitación.");
-    if (
+    if (group) {
+      const unitsById = new Map(units.map((unit) => [unit.id, unit]));
+      for (const [roomId, { count, unitIds: assigned }] of places) {
+        const first = unitsById.get(assigned[0]);
+        if (assigned.some((id) => unitsById.get(id).room_id !== roomId))
+          fail("Cada cama debe corresponder a su dormitorio.");
+        const historical = keepHistory && previousRooms.some((place) => place.room_id === roomId && place.pax === count);
+        if (first.type === "dorm" ? assigned.length !== count : assigned.length !== 1 || (!historical && count > first.capacity))
+          fail(`Revisa las plazas asignadas en ${first.room_name}. Usa una cama por persona en dormitorios.`);
+      }
+    } else if (new Set(units.map((u) => u.room_id)).size !== 1) {
+      fail("Elige Reserva de grupo para asignar más de una habitación.");
+    } else if (
       units[0].type === "dorm" ? pax !== units.length : !keepHistory && pax > units[0].capacity
     )
       fail(
@@ -231,7 +278,8 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       for (const unit of units)
         if (overlap.get(unit.id, id ?? 0, end, start))
           fail(
-            "Hay una reserva que ocupa esas fechas. Elige otra cama o cambia el rango.",
+            group ? `${unit.room_name} · ${unit.label} ya está ocupada en esas fechas.`
+              : "Hay una reserva que ocupa esas fechas. Elige otra cama o cambia el rango.",
             409,
           );
     }
@@ -267,11 +315,11 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       );
       for (let i = 0; i < pax; i++) {
         const name =
-          i === 0
+          i === 0 && !group
             ? guestName
             : names[i]
-              ? text(names[i], "Nombre del acompañante", 100)
-              : `Acompañante ${i + 1}`;
+              ? text(names[i], "Nombre del huésped", 100)
+              : `${group ? "Huésped" : "Acompañante"} ${i + 1}`;
         guestInsert.run(id, name);
       }
     } else {
@@ -295,10 +343,15 @@ export function saveReservation(db, body, user, id = null, extension = false) {
           "SELECT id FROM guests WHERE reservation_id=? ORDER BY id LIMIT 1",
         )
         .get(id);
-      db.prepare("UPDATE guests SET name=? WHERE id=?").run(
-        guestName,
-        first.id,
-      );
+      const updateGuest = db.prepare("UPDATE guests SET name=? WHERE id=?");
+      if (!group) updateGuest.run(guestName, first.id);
+      else if (Array.isArray(body.guest_names)) {
+        const guests = db.prepare("SELECT id FROM guests WHERE reservation_id=? ORDER BY id").all(id);
+        guests.forEach((guest, index) => {
+          const name = body.guest_names[index];
+          updateGuest.run(name ? text(name, "Nombre del huésped", 100) : `Huésped ${index + 1}`, guest.id);
+        });
+      }
       if (mode === "shared")
         db.prepare("UPDATE folios SET title=? WHERE reservation_id=?").run(
           sharedTitle,
@@ -311,11 +364,10 @@ export function saveReservation(db, body, user, id = null, extension = false) {
         );
       db.prepare("DELETE FROM allocations WHERE reservation_id=?").run(id);
     }
+    const allocate = db.prepare("INSERT INTO allocations(reservation_id,unit_id,pax) VALUES(?,?,?)");
     for (const unit of units)
-      db.prepare(
-        "INSERT INTO allocations(reservation_id,unit_id) VALUES(?,?)",
-      ).run(id, unit.id);
-    if (["confirmed", "in_house", "checked_out"].includes(status) || advance != null)
+      allocate.run(id, unit.id, group ? (unit.type === "dorm" ? 1 : places.get(unit.room_id).count) : null);
+    if (group || ["confirmed", "in_house", "checked_out"].includes(status) || advance != null)
       ensureReservationFolios(db, id, mode, sharedTitle, user);
     if (datesChanged && (extension || Object.keys(originalRates).length)) {
       db.prepare("DELETE FROM reservation_night_rates WHERE reservation_id=?").run(id);
@@ -352,12 +404,23 @@ export function reservationModule(db) {
     const day = date(req.query.day);
     // Breakfast is served the morning after each booked night, including checkout.
     const guests = db.prepare(`
-      SELECT DISTINCT g.id,g.name,r.id AS reservation_id,r.guest_name AS holder,r.status,
-        room.name AS room_name
-      FROM reservations r JOIN guests g ON g.reservation_id=r.id
-      JOIN allocations a ON a.reservation_id=r.id JOIN units u ON u.id=a.unit_id
-      JOIN rooms room ON room.id=u.room_id
-      WHERE r.breakfast=1 AND r.status<>'cancelled' AND r.check_in<? AND r.check_out>=?
+      WITH stays AS (
+        SELECT * FROM reservations WHERE breakfast=1 AND status<>'cancelled' AND check_in<? AND check_out>=?
+      ), people AS (
+        SELECT g.*, ROW_NUMBER() OVER (PARTITION BY g.reservation_id ORDER BY g.id) AS position
+        FROM guests g JOIN stays r ON r.id=g.reservation_id
+      ), rooms_for_stay AS (
+        SELECT r.id AS reservation_id,u.room_id,COALESCE(SUM(a.pax),r.pax) AS pax
+        FROM stays r JOIN allocations a ON a.reservation_id=r.id JOIN units u ON u.id=a.unit_id
+        GROUP BY r.id,u.room_id
+      ), places AS (
+        SELECT *,SUM(pax) OVER (PARTITION BY reservation_id ORDER BY room_id) AS last_position
+        FROM rooms_for_stay
+      )
+      SELECT g.id,g.name,r.id AS reservation_id,r.guest_name AS holder,r.status,room.name AS room_name
+      FROM stays r JOIN people g ON g.reservation_id=r.id
+      JOIN places p ON p.reservation_id=r.id AND g.position BETWEEN p.last_position-p.pax+1 AND p.last_position
+      JOIN rooms room ON room.id=p.room_id
       ORDER BY room.name,r.id,g.id
     `).all(day, day);
     res.json(guests);

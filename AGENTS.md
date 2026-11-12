@@ -21,7 +21,7 @@ Usar React + TypeScript en frontend y JavaScript ESM en backend. Mantener SQL pa
 
 - Fechas ISO `YYYY-MM-DD`, rango `[entrada, salida)`, sin convertir noches a la zona horaria del navegador.
 - Privada = una unidad exclusiva; dormitorio = una unidad por cama.
-- Una reserva por habitación, exactamente una cama por PAX en dormitorio.
+- Una reserva común ocupa una habitación. Una reserva de grupo ocupa dos o más con las mismas fechas y una hoja conjunta. Cada dormitorio usa exactamente una cama por PAX asignado.
 - Cruce si `existente.entrada < nueva.salida && existente.salida > nueva.entrada`. Las reservas canceladas no bloquean; las salidas conservan su historial de fechas.
 - Validación, asignaciones, huéspedes, hojas y auditoría deben persistir en una misma transacción SQLite. No separar comprobación de disponibilidad y escritura por `await`.
 - No duplicar hojas al editar ni borrar el historial al cancelar, inhabilitar usuarios o plataformas.

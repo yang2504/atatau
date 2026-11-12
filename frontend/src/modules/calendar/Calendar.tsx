@@ -305,7 +305,9 @@ export function Calendar({
                                   : "Con saldo";
                           };
                           const extendable = unit.active && r.unit_ids[0] === unit.id && r.status !== "checked_out";
-                          const canOpenFolio = r.unit_ids[0] === unit.id && hasFolio.has(r.id);
+                          const place = r.room_assignments.find((item) => item.room_id === room.id);
+                          const roomPax = place?.pax ?? r.pax;
+                          const canOpenFolio = (place?.unit_ids[0] ?? r.unit_ids[0]) === unit.id && hasFolio.has(r.id);
                           const staff = reservationStaff(r);
                           const responsible = staff[r.status === "checked_out" ? 2 : r.status === "in_house" ? 1 : 0];
                           const initials = responsible.name?.split(/\s+/).slice(0, 2)
@@ -329,7 +331,7 @@ export function Calendar({
                           return (
                             <Fragment key={r.id}>
                             <button
-                              draggable={!!unit.active}
+                              draggable={!!unit.active && !place}
                               className={`reservation-block ${r.status}${extendable || canOpenFolio ? " has-actions" : ""}${right - left === 1 ? " single-night" : ""}`}
                               style={{
                                 gridColumn: `${left + 2} / ${right + 2}`,
@@ -349,18 +351,19 @@ export function Calendar({
                                 );
                                 e.dataTransfer.effectAllowed = "move";
                               }}
-                              aria-label={`${r.guest_name} · ${statusNames[r.status]} · ${r.pax} PAX${staffDetail ? ` · ${staffDetail}` : ""}`}
-                              title={`${r.guest_name} · ${statusNames[r.status]} · ${r.pax} PAX\n${staffDetail}\n${visibleNights.map((day) => `${shortDate(day)}: ${paymentStatus(day)}`).join("\n")}`}
+                              aria-label={`${r.guest_name} · ${statusNames[r.status]} · ${roomPax} PAX${place ? ` · Grupo #${r.id}` : ""}${staffDetail ? ` · ${staffDetail}` : ""}`}
+                              title={`${r.guest_name} · ${statusNames[r.status]} · ${roomPax} PAX${place ? ` en ${room.name} · Grupo #${r.id} de ${r.pax} personas` : ""}\n${staffDetail}\n${visibleNights.map((day) => `${shortDate(day)}: ${paymentStatus(day)}`).join("\n")}`}
                             >
                               <span className="reservation-avatar">
-                                <Icon name={room.type === "private" && r.pax > 1 ? "users" : "person"} size={15} />
+                                <Icon name={place || (room.type === "private" && roomPax > 1) ? "users" : "person"} size={15} />
                               </span>
                               <span>
                                 <strong>{r.guest_name}</strong>
                                 <small>
                                   {r.status === "pending" && <span className="reservation-pending-label">Pend. </span>}
+                                  {place && <span>Grupo · </span>}
                                   {initials ? <span className="reservation-initials">{responsible.code}·{initials}</span>
-                                    : r.status !== "pending" && (room.type === "dorm" ? "1 cama" : `${r.pax} PAX`)}
+                                    : r.status !== "pending" && (room.type === "dorm" ? "1 cama" : `${roomPax} PAX`)}
                                 </small>
                               </span>
                             </button>

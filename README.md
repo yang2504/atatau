@@ -80,7 +80,11 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 
 **PAX** significa personas. Una reserva de 3 PAX es una reserva para tres personas; no define por sí misma cómo pagan. La modalidad de cuenta se elige por separado.
 
-La estadía usa `[entrada, salida)`: entrada el 1 y salida el 5 equivale a cuatro noches. Otra reserva puede entrar el 5. Una privada con una persona ocupa la habitación completa aunque su capacidad sea dos. En un dormitorio se selecciona exactamente una cama por persona. Cada reserva ocupa una sola habitación en esta versión.
+La estadía usa `[entrada, salida)`: entrada el 1 y salida el 5 equivale a cuatro noches. Otra reserva puede entrar el 5. Una privada con una persona ocupa la habitación completa aunque su capacidad sea dos. En un dormitorio se selecciona exactamente una cama por persona.
+
+Para reservar varios cuartos, abre **Nueva reserva → Reserva de grupo**. Escribe el nombre de la persona encargada y elige las fechas comunes. En **Agregar habitación o dormitorio**, selecciona cada cuarto disponible. Indica cuántas personas van en cada privada y elige las camas en cada dormitorio. Los nombres de los huéspedes son opcionales.
+
+Ingresa la **tarifa total del grupo por noche**. Si todas las habitaciones tienen una tarifa sugerida, el formulario suma sus importes. Puedes registrar un adelanto al crear la reserva y revisar el total, el adelanto y el saldo antes de guardar. En el calendario todos los cuartos muestran el mismo número de grupo al abrir el detalle. Desde cualquiera de ellos puedes acceder a la misma hoja. Usa **Registrar adelanto** en la hoja para pagos adicionales antes de la llegada.
 
 Desde **Hojas de consumo**, abre una hoja, elige **Abonar** en la fila de la noche o servicio y registra importe, fecha y medio de pago. **A/C** suma los abonos activos del cargo. Administración puede anular un abono incorrecto desde su historial. Las noches con abonos vigentes deben conservarse en el rango y mantienen la tarifa acordada.
 
@@ -124,7 +128,7 @@ La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el pa
 
 SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
-Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 011 incorpora horarios semanales y reembolsos. La migración 012 incorpora categorías del Pub y deja los productos existentes en **Sin categoría**.
+Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 011 incorpora horarios semanales y reembolsos. La migración 012 incorpora categorías del Pub y deja los productos existentes en **Sin categoría**. La migración 013 guarda las plazas asignadas por cuarto en las reservas de grupo y conserva las asignaciones anteriores.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 
@@ -142,7 +146,6 @@ Las pruebas usan SQLite en memoria y HTTP real: cruces, límites de fechas/capac
 
 1. Definir reglas de descuentos y arqueo por turno.
 2. Confirmar habitaciones reales, camas, moneda y datos requeridos por huésped.
-3. Definir si un grupo necesita varias habitaciones con una sola cuenta; el modelo actual reserva una habitación por reserva.
 4. Añadir bloqueo de camas por mantenimiento, copias automáticas y recuperación de contraseña.
 
 Consultar `AGENTS.md` antes de continuar y registrar cambios importantes en `docs/CAMBIOS.md`. Las decisiones de arquitectura están en `docs/ARQUITECTURA.md`.

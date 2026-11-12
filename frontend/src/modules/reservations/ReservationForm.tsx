@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { UsdConversion } from "../../components/UsdConversion";
-import type { Data, Draft, Reservation } from "../../lib/types";
+import type { Data, Draft, Reservation, RoomAssignment } from "../../lib/types";
 import { api, today, addDays, daysBetween, statusNames } from "../../lib/api";
 import { Modal, ErrorBox, Icon } from "../../components/UI";
 import { StayDates } from "./StayDates";
@@ -8,6 +8,7 @@ import { ReservationStaff } from "./ReservationStaff";
 import { cents, money, paymentMethods } from "../../lib/money";
 import { CardCharge } from "../../components/CardCharge";
 import { lodgingTotal, normalRoomRate } from "../../lib/lodging";
+import { GroupRooms } from "./GroupRooms";
 
 export function ReservationForm({
   data,
@@ -25,6 +26,8 @@ export function ReservationForm({
   onOpenFolio?: (reservation: Reservation) => void;
 }) {
   const r = reservation;
+  const [group, setGroup] = useState(!!r?.room_assignments.length);
+  const [assignments, setAssignments] = useState<RoomAssignment[]>(r?.room_assignments ?? []);
   const initialUnit = r?.unit_ids[0] ?? draft?.unit_id;
   const initialRoom =
     data.rooms.find((room) => room.units.some((u) => u.id === initialUnit)) ??
@@ -53,22 +56,38 @@ export function ReservationForm({
   const [arrivalMethod, setArrivalMethod] = useState("Efectivo");
   const [advanceAmount, setAdvanceAmount] = useState("");
   const [advanceMethod, setAdvanceMethod] = useState("Efectivo");
+  const [saved, setSaved] = useState(false);
+  const [groupRateOverride, setGroupRateOverride] = useState<string | null>(
+    group && r?.nightly_cents != null ? (r.nightly_cents / 100).toFixed(2) : null,
+  );
   const [rateOverride, setRateOverride] = useState<string | null>(
     r?.nightly_cents != null ? (r.nightly_cents / 100).toFixed(2) : null,
   );
   const suggested =
     (platformId !== 1 ? room?.rates.find((rate) => rate.platform_id === platformId) : undefined) ??
     normalRoomRate(room, pax, breakfast);
-  const rate =
-    rateOverride ??
-    (!r && suggested ? (suggested.nightly_cents / 100).toFixed(2) : "");
+  const groupPax = assignments.reduce((sum, item) => sum + item.pax, 0);
+  const groupRates = assignments.map((item) => {
+    const room = data.rooms.find((room) => room.id === item.room_id);
+    return (platformId !== 1 ? room?.rates.find((rate) => rate.platform_id === platformId) : undefined) ??
+      normalRoomRate(room, item.pax, breakfast);
+  });
+  const groupSuggested = groupRates.length && groupRates.every(Boolean)
+    ? groupRates.reduce((sum, rate) => sum + (rate?.nightly_cents ?? 0), 0) : null;
+  const rate = group
+    ? groupRateOverride ?? (groupSuggested !== null ? (groupSuggested / 100).toFixed(2) : "")
+    : rateOverride ?? (!r && suggested ? (suggested.nightly_cents / 100).toFixed(2) : "");
   const nights = end ? daysBetween(start, end) : 0;
   const canArrive = r?.status === "confirmed" || r?.status === "pending";
-  const priced = /^\d{1,7}([.,]\d{1,2})?$/.test(rate);
+  const priced = /^\d{1,7}([.,]\d{1,2})?$/.test(rate) && (!group || cents(rate) <= 100_000_000);
   const total = lodgingTotal(r, start, end, priced ? cents(rate) : 0);
   const lodgingDue = Math.max(0, total - (r?.lodging_paid_cents ?? 0));
   const collect = collectOnArrival && lodgingDue > 0;
   const advanceBase = /^\d{1,9}([.,]\d{1,2})?$/.test(advanceAmount) ? cents(advanceAmount) : 0;
+  const historical = r?.status === "cancelled" || (r?.status === "checked_out" && r.check_out <= today());
+  const groupGuestLabels = [...assignments].sort((a, b) => a.room_id - b.room_id).flatMap((item) =>
+    Array.from({ length: Number.isInteger(item.pax) ? Math.min(30, Math.max(0, item.pax)) : 0 },
+      () => data.rooms.find((room) => room.id === item.room_id)?.name));
   const conflicting = new Set(
     data.reservations
       .filter(
@@ -80,11 +99,45 @@ export function ReservationForm({
       )
       .flatMap((other) => other.unit_ids),
   );
+  const groupReady = assignments.length >= 2 && (!r || groupPax === r.pax) && assignments.every((item) => {
+    const room = data.rooms.find((room) => room.id === item.room_id);
+    return historical || (room?.active && Number.isInteger(item.pax) && item.pax >= 1 && item.pax <= room.capacity &&
+      (room.type === "private" ? item.unit_ids.length === 1 : item.unit_ids.length === item.pax) &&
+      item.unit_ids.every((id) => !conflicting.has(id) && room.units.some((unit) => unit.id === id && unit.active)));
+  });
+  const groupAdvanceInvalid = group && !r && advanceAmount.trim() !== "" &&
+    (advanceBase === 0 || advanceBase > lodgingDue);
+
+  function chooseGroup() {
+    if (!assignments.length && draft?.unit_id && initialRoom && !conflicting.has(draft.unit_id))
+      setAssignments([{ room_id: initialRoom.id, unit_ids: [draft.unit_id], pax: 1 }]);
+    setGroup(true);
+  }
+
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (busy) return;
+    if (saved) {
+      setBusy(true);
+      try {
+        await onSaved();
+        onClose();
+      } catch {
+        setError("La reserva ya se guardó. Intenta actualizar la vista nuevamente.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     const submitter = (e.nativeEvent as SubmitEvent).submitter;
     const operation = submitter instanceof HTMLButtonElement ? submitter.value : "";
-    if (operation === "cancelled" && !window.confirm("¿Cancelar esta reserva y liberar sus fechas?")) return;
+    if (operation === "cancelled" && !window.confirm(group
+      ? "¿Cancelar la reserva de grupo y liberar todas sus habitaciones?"
+      : "¿Cancelar esta reserva y liberar sus fechas?")) return;
+    if (group && (!end || nights < 1 || !priced || groupAdvanceInvalid || (!groupReady && operation !== "cancelled"))) {
+      setError("Revisa las habitaciones, las plazas, la tarifa y el importe del adelanto.");
+      return;
+    }
     setBusy(true);
     setError("");
     const form = new FormData(e.currentTarget);
@@ -94,10 +147,10 @@ export function ReservationForm({
         `/reservations${r ? `/${r.id}` : ""}`,
         {
           guest_name: form.get("guest_name"),
-          guest_names: Array.from({ length: pax }, (_, i) =>
+          guest_names: Array.from({ length: group ? groupGuestLabels.length : pax }, (_, i) =>
             form.get(`guest_${i}`),
           ),
-          pax,
+          pax: group ? groupPax : pax,
           check_in: start,
           check_out: end,
           platform_id: platformId,
@@ -107,21 +160,27 @@ export function ReservationForm({
           status: operation === "advance" ? "pending" : operation ||
             (status === "confirmed" && r && ["in_house", "checked_out", "cancelled"].includes(r.status) ? r.status : status),
           breakfast,
-          folio_mode: mode,
-          folio_holder: mode === "shared" ? form.get("folio_holder") : undefined,
-          unit_ids: units,
+          folio_mode: group ? "shared" : mode,
+          folio_holder: !group && mode === "shared" ? form.get("folio_holder") : undefined,
+          unit_ids: group ? undefined : units,
+          room_assignments: group ? assignments : undefined,
           comments: form.get("comments"),
           check_in_payment: operation === "in_house" && collect
             ? { method: arrivalMethod, amount_cents: lodgingDue }
             : undefined,
-          advance_payment: operation === "advance"
+          advance_payment: operation === "advance" || (group && !r && advanceBase > 0)
             ? { method: advanceMethod, amount_cents: advanceBase, expected_balance_cents: lodgingDue }
             : undefined,
         },
         r ? "PUT" : "POST",
       );
-      await onSaved();
-      onClose();
+      setSaved(true);
+      try {
+        await onSaved();
+        onClose();
+      } catch {
+        setError("La reserva ya se guardó. Actualiza la vista para ver los cambios.");
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -129,11 +188,19 @@ export function ReservationForm({
     }
   }
   return (
-    <Modal title={r ? `Reserva #${r.id}` : "Nueva reserva"} onClose={onClose}>
+    <Modal title={r ? `Reserva${group ? " de grupo" : ""} #${r.id}` : "Nueva reserva"}
+      className={group ? "group-reservation-dialog" : undefined} onClose={onClose}>
       <form onSubmit={submit} className="form-stack">
         <ErrorBox message={error} />
+        {saved ? <div className="modal-actions">
+          <button className="button primary" disabled={busy}>Actualizar vista</button>
+        </div> : <>
+        {!r && <div className="tabs reservation-kind" role="group" aria-label="Tipo de reserva">
+          <button type="button" aria-pressed={!group} className={!group ? "active" : ""} onClick={() => setGroup(false)}>Un cuarto</button>
+          <button type="button" aria-pressed={group} className={group ? "active" : ""} onClick={chooseGroup}>Reserva de grupo</button>
+        </div>}
         <label>
-          Huésped / responsable
+          {group ? "Encargado de la reserva y de la cuenta" : "Huésped / responsable"}
           <input
             autoFocus
             name="guest_name"
@@ -143,6 +210,7 @@ export function ReservationForm({
             maxLength={100}
           />
         </label>
+        {group && <p className="group-common-dates">Estas fechas se aplican a todos los cuartos del grupo.</p>}
         <StayDates
           start={start}
           end={end}
@@ -154,6 +222,21 @@ export function ReservationForm({
         {canArrive || r?.status === "in_house" ? <p className="muted small">
           Para agregar noches con otra tarifa, usa Alargar estadía en el calendario.
         </p> : null}
+        {group ? <>
+          <GroupRooms rooms={data.rooms} assignments={assignments} occupied={conflicting}
+            datesReady={nights > 0} historical={historical} onChange={setAssignments} />
+          {r && groupPax !== r.pax && <p className="error">Distribuye las {r.pax} personas de la reserva entre los cuartos.</p>}
+          {groupGuestLabels.length > 0 && <details>
+            <summary>Agregar nombres de huéspedes (opcional)</summary>
+            <div className="form-grid">
+              {groupGuestLabels.map((name, index) => <label key={index}>
+                Huésped {index + 1} · {name}
+                <input name={`guest_${index}`} maxLength={100}
+                  defaultValue={r?.guests[index]?.name === `Huésped ${index + 1}` ? "" : r?.guests[index]?.name} />
+              </label>)}
+            </div>
+          </details>}
+        </> : <>
         <div className="form-grid">
           <label>
             Habitación
@@ -243,6 +326,7 @@ export function ReservationForm({
             </div>
           </details>
         )}
+        </>}
         <div className="form-grid">
           <label>
             Canal de reserva
@@ -280,24 +364,25 @@ export function ReservationForm({
           </select>
         </label>
         {breakfast === 1 && nights > 0 && <p className="form-note">
-          {pax * nights} desayunos en total · {pax} por mañana, del {addDays(start, 1)} al {end}.
+          {(group ? groupPax : pax) * nights} desayunos en total · {group ? groupPax : pax} por mañana, del {addDays(start, 1)} al {end}.
         </p>}
         {r && <>
           <ReservationStaff reservation={r} />
           {onOpenFolio && <div className="row-actions">
             <button type="button" className="button secondary compact" disabled={busy}
-              onClick={() => onOpenFolio(r)}><Icon name="receipt" size={15} /> Ver hojas de consumo</button>
+              onClick={() => onOpenFolio(r)}><Icon name="receipt" size={15} /> {group ? "Abrir hoja del grupo" : "Ver hojas de consumo"}</button>
           </div>}
         </>}
         <div className="form-grid">
           <label>
-            Tarifa {r && Object.keys(r.night_rates).length > 0 ? "original " : ""}por noche para {pax} {pax === 1 ? "persona" : "personas"}{" "}
+            {group ? "Tarifa total del grupo por noche" :
+              `Tarifa ${r && Object.keys(r.night_rates).length > 0 ? "original " : ""}por noche para ${pax} ${pax === 1 ? "persona" : "personas"}`}{" "}
             (Bs)
             <input
               inputMode="decimal"
               pattern="[0-9]{1,7}([.,][0-9]{1,2})?"
               value={rate}
-              onChange={(e) => setRateOverride(e.target.value)}
+              onChange={(e) => (group ? setGroupRateOverride : setRateOverride)(e.target.value)}
               required={r?.nightly_cents !== null}
               placeholder="Ej. 150.00"
             />
@@ -311,14 +396,15 @@ export function ReservationForm({
             />
           </label>
         </div>
-        <UsdConversion onApply={setRateOverride} />
-        {(priced || total > 0) && nights > 0 && (
+        {group && rate && !priced && <p className="error">Ingresa una tarifa válida de hasta Bs 1.000.000 por noche.</p>}
+        <UsdConversion onApply={group ? setGroupRateOverride : setRateOverride} />
+        {!group && (priced || total > 0) && nights > 0 && (
           <p className="form-note">
             Hospedaje total · {nights} {nights === 1 ? "noche" : "noches"} ·{" "}
             {money(total)}
           </p>
         )}
-        {!r && suggested && rateOverride !== null && (
+        {!group && !r && suggested && rateOverride !== null && (
           <button
             type="button"
             className="text-button"
@@ -327,7 +413,11 @@ export function ReservationForm({
             Usar tarifa sugerida · {money(suggested.nightly_cents)}
           </button>
         )}
-        <label>
+        {group && !r && groupSuggested !== null && groupRateOverride !== null &&
+          <button type="button" className="text-button" onClick={() => setGroupRateOverride(null)}>
+            Usar tarifas sugeridas · {money(groupSuggested)} por noche
+          </button>}
+        {!group && <><label>
           Hoja de consumo
           <select
             value={mode}
@@ -348,6 +438,7 @@ export function ReservationForm({
             Para cambiar esos datos, cancela esta reserva y crea una nueva.
           </p>
         )}
+        </>}
         <label>
           Observaciones
           <textarea
@@ -374,19 +465,47 @@ export function ReservationForm({
             </>}
           </fieldset>
         )}
+        {group && !r && <fieldset className="form-stack group-advance">
+          <legend>Adelanto de reserva (opcional)</legend>
+          <div className="form-grid">
+            <label>Importe del adelanto (Bs)
+              <input inputMode="decimal" value={advanceAmount} onChange={(e) => setAdvanceAmount(e.target.value)} />
+            </label>
+            <label>Medio de pago del adelanto
+              <select value={advanceMethod} disabled={!advanceBase} onChange={(e) => setAdvanceMethod(e.target.value)}>
+                {paymentMethods.map((method) => <option key={method}>{method}</option>)}
+              </select>
+            </label>
+          </div>
+          {groupAdvanceInvalid && <p className="error">Ingresa un importe válido que no supere el saldo de hospedaje.</p>}
+          {advanceMethod === "Tarjeta" && advanceBase > 0 && <CardCharge base={advanceBase} />}
+        </fieldset>}
+        {group && <section className="group-booking-summary" aria-label="Resumen de la reserva">
+          <div>
+            <h3>Una hoja de consumo</h3>
+            <p aria-live="polite">{assignments.length} {assignments.length === 1 ? "cuarto" : "cuartos"} · {groupPax} {groupPax === 1 ? "persona" : "personas"} · {nights || "—"} {nights === 1 ? "noche" : "noches"}</p>
+          </div>
+          {priced && nights > 0 && <dl>
+            <div><dt>Hospedaje total</dt><dd>{money(total)}</dd></div>
+            {!!(r?.lodging_paid_cents || (!r && advanceBase)) && <div>
+              <dt>{r ? "Abonado" : `Adelanto · ${advanceMethod}`}</dt><dd>{money(r?.lodging_paid_cents ?? advanceBase)}</dd>
+            </div>}
+            <div><dt>Saldo de hospedaje</dt><dd>{money(Math.max(0, lodgingDue - (r ? 0 : advanceBase)))}</dd></div>
+          </dl>}
+        </section>}
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={onClose}>
             Cerrar
           </button>
-          <button disabled={busy || !room || !end || r?.status === "cancelled"} className="button primary">
-            {busy ? "Guardando…" : r ? "Guardar cambios" : "Crear reserva"}
+          <button disabled={busy || (group ? !groupReady || !priced || groupAdvanceInvalid : !room) || !end || r?.status === "cancelled"} className="button primary">
+            {busy ? "Guardando…" : r ? "Guardar cambios" : group ? "Crear reserva de grupo" : "Crear reserva"}
           </button>
-          {canArrive && <button className="button secondary" value="in_house" disabled={busy}>
+          {canArrive && <button className="button secondary" value="in_house" disabled={busy || (group && !groupReady)}>
             {r?.status === "pending" ? "Confirmar y registrar llegada" : "Registrar llegada"}
             {collect && " con pago"}
           </button>}
         </div>
-        {r?.status === "pending" && lodgingDue > 0 && (
+        {!group && r?.status === "pending" && lodgingDue > 0 && (
           <details className="form-stack">
             <summary>Registrar un adelanto sin confirmar la reserva</summary>
             <div className="form-grid">
@@ -417,6 +536,7 @@ export function ReservationForm({
             </div>
           </details>
         )}
+        </>}
       </form>
     </Modal>
   );

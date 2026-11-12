@@ -189,6 +189,8 @@ export function folioModule(db) {
         WHERE a.reservation_id=listed.reservation_id LIMIT 1
       )
       WHERE listed.status<>'pending' OR EXISTS (
+        SELECT 1 FROM allocations a WHERE a.reservation_id=listed.reservation_id AND a.pax IS NOT NULL
+      ) OR EXISTS (
         SELECT 1 FROM folio_payments p JOIN folios sibling ON sibling.id=p.folio_id
         WHERE sibling.reservation_id=listed.reservation_id
       ) OR EXISTS (
@@ -219,6 +221,17 @@ export function folioModule(db) {
       JOIN folio_payments applied ON applied.id=a.payment_id JOIN folio_payments p ON p.id=r.payment_id
       JOIN users u ON u.id=r.user_id WHERE applied.folio_id=? GROUP BY r.id ORDER BY r.id DESC`).all(full, folio.id);
     res.json({ ...folio, entries: rows, stay_payments: stayPayments(db, folio.id, full), refunds });
+  });
+  router.post("/:id/stay-payments", (req, res) => {
+    const id = transaction(db, () => {
+      const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
+      if (folio.status === "cancelled" || !db.prepare(
+        "SELECT 1 FROM allocations WHERE reservation_id=? AND pax IS NOT NULL LIMIT 1",
+      ).get(folio.reservation_id)) fail("El cobro conjunto requiere una reserva de grupo vigente.", 409);
+      const expected = integer(req.body.expected_balance_cents, "Saldo esperado", 1, MAX_STAY_CENTS);
+      return recordStayPayment(db, folio.reservation_id, req.body, req.user, expected);
+    });
+    res.status(201).json({ id });
   });
   router.post("/:id/services", (req, res) => {
     const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));

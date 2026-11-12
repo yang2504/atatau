@@ -1,5 +1,11 @@
 # Cambios y decisiones importantes
 
+## 2026-11-12 — Reservas de grupo con una hoja de consumo
+
+- **Nueva reserva → Reserva de grupo** permite combinar privadas y camas de distintos dormitorios bajo el mismo encargado y las mismas fechas. El formulario muestra las plazas libres y el total de personas, noches, hospedaje, adelanto y saldo. Desde el calendario, cada cuarto abre la misma hoja.
+- La migración 013 conserva las reservas anteriores y registra la distribución por cuarto. El adelanto inicial se guarda con la reserva y cada pago genera un movimiento de Caja Chica. La hoja permite registrar adelantos adicionales y conserva cobros y reembolsos. Antes de actualizar una instalación, respalda toda la carpeta de datos con Atatau detenido.
+- Validado con `npm test`, `npm run check` y `npm run build`. Se comprobó en Chrome con datos ficticios y cuenta de recepción el flujo de escritorio y móvil, el bloqueo de una cama ocupada y el acceso a la hoja por cuarto. Queda pendiente aplicar la migración en la instalación de recepción.
+
 ## 2026-11-12 — Categorías del Pub y borradores de Novedades
 
 - Administración puede crear, renombrar y eliminar categorías del Pub. El catálogo se filtra por categoría y permite consultar **Sin categoría**. La migración 012 conserva el stock y el historial al eliminar una categoría o actualizar productos existentes.

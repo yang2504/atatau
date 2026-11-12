@@ -32,6 +32,7 @@ export function FolioSheet({
   const [voiding, setVoiding] = useState<number | null>(null);
   const [onlyDue, setOnlyDue] = useState(false);
   const [showService, setShowService] = useState(false);
+  const [payStay, setPayStay] = useState(false);
   const [notice, setNotice] = useState("");
   const historyHeading = useRef<HTMLHeadingElement>(null);
   const [error, setError] = useState("");
@@ -45,25 +46,30 @@ export function FolioSheet({
   const reservation = data.reservations.find(
     (r) => r.id === folio.reservation_id,
   );
-  const locations = data.rooms.flatMap((room) =>
-    room.units
-      .filter((unit) => reservation?.unit_ids.includes(unit.id))
-      .map((unit) => `${room.name} · ${unit.label}`),
-  );
+  const locations = data.rooms.flatMap((room) => {
+    const units = room.units.filter((unit) => reservation?.unit_ids.includes(unit.id));
+    if (!units.length) return [];
+    const pax = reservation?.room_assignments.find((item) => item.room_id === room.id)?.pax;
+    const detail = room.type === "dorm" ? units.map((unit) => unit.label).join(", ")
+      : pax ? `${pax} PAX` : units[0].label;
+    return [`${room.name} · ${detail}`];
+  });
   const total = (key: "paid_cents" | "balance_cents" | "total_cents") =>
     (entries ?? []).reduce((sum, row) => sum + row[key], 0);
   async function save(endpoint: string, body: () => unknown, done: () => void, method = "POST") {
     setBusy(true);
     setError("");
     setNotice("");
+    let committed = false;
     try {
       await api(path + endpoint, body(), method);
+      committed = true;
       done();
       setDetails(await api<FolioDetails>(path));
       setNotice("Cambios guardados.");
       await onSaved();
     } catch (error) {
-      setError((error as Error).message);
+      setError(committed ? "El movimiento se guardó. Vuelve a abrir la hoja para actualizarla." : (error as Error).message);
     } finally {
       setBusy(false);
     }
@@ -85,16 +91,17 @@ export function FolioSheet({
   }
   function submitPayment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!payment && !editing) return;
+    if (!payment && !editing && !payStay) return;
     const values = new FormData(event.currentTarget);
     void save(
-      editing ? paymentPath(editing.payment, editing.group) : "/payments",
+      editing ? paymentPath(editing.payment, editing.group) : payStay ? "/stay-payments" : "/payments",
       () => ({
         lodging_day: payment?.lodging_day,
         service_id: payment?.service_id,
         day: values.get("day"),
         method: values.get("method"),
         amount_cents: cents(String(values.get("amount"))),
+        expected_balance_cents: payStay ? stayBalance : undefined,
       }),
       closePayment,
       editing ? "PATCH" : "POST",
@@ -104,6 +111,7 @@ export function FolioSheet({
     return `/${group ? "stay-payments" : "payments"}/${payment.id}`;
   }
   function closePayment() {
+    setPayStay(false);
     setEditing(null);
     setPayment(null);
     setVoiding(null);
@@ -129,10 +137,7 @@ export function FolioSheet({
         {canCorrect && user.role === "superadmin" && <button
           type="button" className="text-button" disabled={busy}
           onClick={() => {
-            setPayment(null);
-            setVoiding(null);
-            setRefunding(null);
-            setShowService(false);
+            closePayment();
             setEditing({ payment: record, group });
             setPaymentMethod(record.method);
             setAmountText((record.amount_cents / 100).toFixed(2));
@@ -153,6 +158,7 @@ export function FolioSheet({
   const cancelled = folio.status === "cancelled";
   const base = /^\d{1,9}([.,]\d{1,2})?$/.test(amountText) ? cents(amountText) : 0;
   const balance = total("balance_cents");
+  const stayBalance = entries?.reduce((sum, row) => sum + (row.lodging_day ? row.balance_cents : 0), 0) ?? 0;
   const nights = daysBetween(folio.check_in, folio.check_out);
   const dueCount = entries?.filter((row) => row.balance_cents > 0).length ?? 0;
   const visibleEntries = onlyDue ? entries?.filter((row) => row.balance_cents > 0) : entries;
@@ -202,6 +208,17 @@ export function FolioSheet({
             <div className="folio-toolbar-actions">
               {hasHistory && <button type="button" className="button secondary compact"
                 onClick={() => historyHeading.current?.focus()}>Cobros y reembolsos</button>}
+              {!cancelled && !!reservation?.room_assignments.length && stayBalance > 0 &&
+                <button type="button" className="button secondary compact" disabled={busy} aria-expanded={payStay}
+                  onClick={() => {
+                    const open = !payStay;
+                    closePayment();
+                    setShowService(false);
+                    setPayStay(open);
+                    setPaymentMethod("Efectivo");
+                  }}>
+                  {folio.status === "pending" || folio.status === "confirmed" ? "Registrar adelanto" : "Abonar hospedaje"}
+                </button>}
               {!cancelled && <button type="button" className="button primary compact" aria-expanded={showService}
                 disabled={busy} onClick={() => { const open = !showService; closePayment(); setShowService(open); }}>
                 <Icon name="plus" size={16} /> Agregar servicio
@@ -221,17 +238,18 @@ export function FolioSheet({
               <button className="button primary" disabled={busy}>Registrar reembolso</button>
             </div>
           </form>}
-          {(payment || editing) && (
+          {(payment || editing || payStay) && (
             <form
-              key={editing ? `edit-${editing.payment.id}` : payment?.lodging_day ?? payment?.service_id}
+              key={editing ? `edit-${editing.payment.id}` : payStay ? "stay" : payment?.lodging_day ?? payment?.service_id}
               className="form-stack folio-form"
               onSubmit={submitPayment}
             >
               <h3>
                 {editing ? (editing.group ? "Editar cobro de estadía" : "Editar abono")
-                  : payment && `Abonar · ${payment.service} del ${shortDate(payment.day)}`}
+                  : payStay ? "Abono de hospedaje del grupo" : payment && `Abonar · ${payment.service} del ${shortDate(payment.day)}`}
               </h3>
               {payment && <p>Saldo disponible · {money(payment.balance_cents)}</p>}
+              {payStay && <p>Saldo de hospedaje · {money(stayBalance)}</p>}
               {editing?.group && <p>La corrección se aplica a todas las hojas vinculadas al cobro.</p>}
               <div className="form-grid">
                 <label>
@@ -243,7 +261,7 @@ export function FolioSheet({
                   <input
                     name="amount"
                     inputMode="decimal"
-                    pattern={editing?.group ? "[0-9]{1,9}([.,][0-9]{1,2})?" : "[0-9]{1,7}([.,][0-9]{1,2})?"}
+                    pattern={editing?.group || payStay ? "[0-9]{1,9}([.,][0-9]{1,2})?" : "[0-9]{1,7}([.,][0-9]{1,2})?"}
                     value={amountText}
                     onChange={(event) => setAmountText(event.target.value)}
                     required
@@ -270,7 +288,7 @@ export function FolioSheet({
                 >
                   Cancelar
                 </button>
-                <button className="button primary" disabled={busy}>
+                <button className="button primary" disabled={busy || (payStay && (!base || base > stayBalance))}>
                   {editing ? "Guardar corrección" : "Registrar abono"}
                 </button>
               </div>
@@ -357,13 +375,10 @@ export function FolioSheet({
                         aria-label={`Abonar ${row.service} del ${shortDate(row.day, true)}`}
                         disabled={busy}
                         onClick={() => {
+                          closePayment();
                           setPayment(row);
-                          setEditing(null);
                           setAmountText((row.balance_cents / 100).toFixed(2));
                           setPaymentMethod("Efectivo");
-                          setVoiding(null);
-                          setRefunding(null);
-                          setShowService(false);
                         }}
                       >
                         Abonar

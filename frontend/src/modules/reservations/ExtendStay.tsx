@@ -6,17 +6,21 @@ import { lodgingTotal, normalRoomRate } from "../../lib/lodging";
 import { cents, money } from "../../lib/money";
 import type { Reservation, Room } from "../../lib/types";
 
-export function ExtendStay({ reservation, room, onClose, onSaved }: {
+export function ExtendStay({ reservation, rooms, onClose, onSaved }: {
   reservation: Reservation;
-  room: Room | undefined;
+  rooms: Room[];
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
   const r = reservation;
-  const suggested = normalRoomRate(room, r.pax, r.breakfast);
+  const group = r.room_assignments.length > 0;
+  const rates = rooms.map((room) => normalRoomRate(room,
+    r.room_assignments.find((place) => place.room_id === room.id)?.pax ?? r.pax, r.breakfast));
+  const suggested = rates.length && rates.every(Boolean)
+    ? rates.reduce((sum, rate) => sum + (rate?.nightly_cents ?? 0), 0) : null;
   const [start, setStart] = useState(r.check_in);
   const [end, setEnd] = useState(addDays(r.check_out, 1));
-  const [rate, setRate] = useState(suggested ? (suggested.nightly_cents / 100).toFixed(2) : "");
+  const [rate, setRate] = useState(suggested !== null ? (suggested / 100).toFixed(2) : "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const added = daysBetween(start, r.check_in) + daysBetween(r.check_out, end);
@@ -47,19 +51,19 @@ export function ExtendStay({ reservation, room, onClose, onSaved }: {
   return (
     <Modal title="Alargar estadía" onClose={() => { if (!busy) onClose(); }}>
       <form className="form-stack" onSubmit={submit}>
-        <p><strong>{r.guest_name}</strong> · {room?.name} · Reserva #{r.id}</p>
+        <p><strong>{r.guest_name}</strong> · {rooms.map((room) => room.name).join(", ")} · Reserva #{r.id}</p>
         <p className="muted">Estadía actual del {shortDate(r.check_in)} al {shortDate(r.check_out)}. Las noches actuales conservan su tarifa.</p>
         <ErrorBox message={error} />
         <div className="form-grid">
           <label>Nueva llegada<input type="date" value={start} max={r.check_in} onChange={(e) => setStart(e.target.value)} required /></label>
           <label>Nueva salida<input type="date" value={end} min={r.check_out} onChange={(e) => setEnd(e.target.value)} required /></label>
         </div>
-        <label>Tarifa normal por noche adicional para {r.pax} PAX (Bs)
+        <label>{group ? "Tarifa total del grupo por noche adicional" : `Tarifa normal por noche adicional para ${r.pax} PAX`} (Bs)
           <input inputMode="decimal" pattern="[0-9]{1,7}([.,][0-9]{1,2})?"
             value={rate} onChange={(e) => setRate(e.target.value)} required />
         </label>
         <UsdConversion onApply={setRate} />
-        {!suggested && <p className="muted">Ingresa la tarifa normal acordada para las noches adicionales.</p>}
+        {suggested === null && <p className="muted">Ingresa la tarifa acordada para las noches adicionales.</p>}
         {valid && priced && <div className="form-note">
           <p>{r.nightly_cents === null ? "Importes registrados hasta ahora" : "Estadía actual"} · {money(original)}</p>
           <p>Noches adicionales · {added} · {money(extra)}</p>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { Data, Folio } from "../../lib/types";
 import { shortDate, statusNames, today } from "../../lib/api";
 import { Empty, Icon } from "../../components/UI";
-import { folioMatches } from "../../lib/guestSearch";
+import { folioMatches, nameMatches } from "../../lib/guestSearch";
 export function Folios({
   data,
   onOpen,
@@ -18,16 +18,32 @@ export function Folios({
   const byId = new Map(
     data.reservations.map((reservation) => [reservation.id, reservation]),
   );
+  const roomsById = new Map(data.rooms.map((room) => [room.id, room]));
+  const roomsByFolio = new Map(data.folios.map((folio) => {
+    const assignments = byId.get(folio.reservation_id)?.room_assignments ?? [];
+    const ids = assignments.length ? assignments.map((item) => item.room_id) : [folio.room_id];
+    return [folio.id, ids.flatMap((id) => {
+      const room = id === null ? undefined : roomsById.get(id);
+      return room ? [room] : [];
+    })] as const;
+  }));
+  const folioRooms = (folio: Folio) => roomsByFolio.get(folio.id) ?? [];
+  const matchesType = (folio: Folio, kind: typeof type) => {
+    const rooms = folioRooms(folio);
+    return rooms.length ? rooms.some((room) => room.type === kind) : (folio.room_type ?? "private") === kind;
+  };
+  const matchesRoom = (folio: Folio, id: number) => folioRooms(folio).some((room) => room.id === id);
   const monthly = data.folios.filter((f) =>
     (allMonths || (f.check_in.slice(0, 7) <= month && f.check_out > month + "-01") ||
       f.paid_months.includes(month) || f.service_months.includes(month)) &&
     (query.trim().replace(/^#/, "") === String(f.reservation_id) ||
-      folioMatches(query, f, byId.get(f.reservation_id))),
+      folioMatches(query, f, byId.get(f.reservation_id)) ||
+      (!!query.trim() && folioRooms(f).some((room) => nameMatches(query, room.name)))),
   );
-  const byType = monthly.filter((f) => (f.room_type ?? "private") === type);
-  const historicalRooms = new Set(data.folios.map((folio) => folio.room_id));
+  const byType = monthly.filter((f) => matchesType(f, type));
+  const historicalRooms = new Set(data.folios.flatMap((folio) => folioRooms(folio).map((room) => room.id)));
   const roomTabs = data.rooms.filter((room) => room.type === type && (room.active || historicalRooms.has(room.id)));
-  const folios = roomId === null ? byType : byType.filter((f) => f.room_id === roomId);
+  const folios = roomId === null ? byType : byType.filter((f) => matchesRoom(f, roomId));
   function changeType(next: typeof type) {
     if (next !== type) setRoomId(null);
     setType(next);
@@ -57,11 +73,11 @@ export function Folios({
       <div className="tabs" aria-label="Tipo de alojamiento" role="group">
         <button type="button" className={type === "private" ? "active" : ""}
           aria-pressed={type === "private"} onClick={() => changeType("private")}>
-          Habitaciones privadas · {monthly.filter((f) => f.room_type !== "dorm").length}
+          Habitaciones privadas · {monthly.filter((f) => matchesType(f, "private")).length}
         </button>
         <button type="button" className={type === "dorm" ? "active" : ""}
           aria-pressed={type === "dorm"} onClick={() => changeType("dorm")}>
-          Dormitorios · {monthly.filter((f) => f.room_type === "dorm").length}
+          Dormitorios · {monthly.filter((f) => matchesType(f, "dorm")).length}
         </button>
       </div>
       <div className="tabs folio-room-tabs" aria-label="Habitaciones" role="group">
@@ -72,7 +88,7 @@ export function Folios({
         {roomTabs.map((room) => <button key={room.id} type="button"
           className={roomId === room.id ? "active" : ""} aria-pressed={roomId === room.id}
           onClick={() => setRoomId(room.id)}>
-          {room.name}{!room.active && " (inactiva)"} · {byType.filter((folio) => folio.room_id === room.id).length}
+          {room.name}{!room.active && " (inactiva)"} · {byType.filter((folio) => matchesRoom(folio, room.id)).length}
         </button>)}
       </div>
       {!folios.length ? (
@@ -108,7 +124,7 @@ export function Folios({
                       Hoja #{f.id} · Reserva #{f.reservation_id} · {f.folio_mode === "shared" ? "Cuenta del grupo" : "Individual"}
                     </small>
                   </td>
-                  <td>{f.room_name ?? "Sin asignación"}</td>
+                  <td>{folioRooms(f).map((room) => room.name).join(" · ") || f.room_name || "Sin asignación"}</td>
                   <td>
                     {shortDate(f.check_in, true)} → {shortDate(f.check_out, true)}
                   </td>

@@ -35,7 +35,7 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
     }
     const db = openDatabase(path);
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 12);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 13);
       assert.equal(db.prepare("SELECT COUNT(*) AS n FROM reservation_night_rates").get().n, 0);
       assert.equal(db.prepare("SELECT folio_holder FROM reservations WHERE id=1").get().folio_holder, "");
       assert.equal(db.prepare("SELECT active FROM units WHERE id=1").get().active, 1);
@@ -44,6 +44,7 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
       assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
       assert.equal(db.prepare("SELECT status FROM reservations WHERE id=1").get().status, "checked_out");
       assert.equal(db.prepare("SELECT COUNT(*) AS total FROM allocations").get().total, 1);
+      assert.equal(db.prepare("SELECT pax FROM allocations WHERE reservation_id=1").get().pax, null);
       assert.equal(db.prepare("SELECT body FROM notes WHERE reservation_id=1").get().body, "Mensaje histórico");
       const payment = db.prepare("SELECT amount_cents,surcharge_cents,group_id,turn_id FROM folio_payments").get();
       assert.equal(payment.group_id, null);
@@ -90,7 +91,7 @@ test("la migración 003 completa ambas variantes instaladas de la versión 002",
         }
         const db = openDatabase(path);
         try {
-          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 12);
+          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 13);
           const product = db.prepare("SELECT stock,category_id FROM pop_products WHERE name='Producto histórico'").get();
           assert.equal(product.stock, 3);
           assert.equal(product.category_id, null);

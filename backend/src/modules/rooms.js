@@ -123,7 +123,7 @@ export function roomModule(db, admin) {
     transaction(db, () => {
       const difference = capacity - room.capacity;
       if (difference !== 0) {
-        const used = db.prepare(`SELECT DISTINCT a.unit_id,r.pax FROM allocations a
+        const used = db.prepare(`SELECT DISTINCT a.unit_id,COALESCE(a.pax,r.pax) AS pax FROM allocations a
           JOIN units u ON u.id=a.unit_id JOIN reservations r ON r.id=a.reservation_id
           WHERE u.room_id=? AND r.status<>'cancelled' AND r.check_out>?`).all(id, localDay());
         if (room.type === "private") {
