@@ -566,7 +566,9 @@ export default function App() {
           {page === "rooms" && (
             <Rooms data={data} user={user} onSaved={onSaved} />
           )}
-          {page === "notes" && <Notes data={data} user={user} onSaved={onSaved} />}
+          <div hidden={page !== "notes"} key={user.id}>
+            <Notes data={data} user={user} onSaved={onSaved} active={page === "notes"} />
+          </div>
           {page === "cash" && <Cash user={user} />}
           {page === "shifts" && user.role !== "receptionist" && <Shifts />}
           {page === "audit" && user.role !== "receptionist" && <Audit />}

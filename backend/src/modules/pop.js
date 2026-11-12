@@ -7,7 +7,39 @@ import { canSeeSuperadmin } from "./users.js";
 export function popModule(db, admin) {
   const router = Router();
   const find = db.prepare("SELECT * FROM pop_products WHERE id=?");
+  const findCategory = db.prepare("SELECT * FROM pop_categories WHERE id=?");
   router.get("/", (req, res) => res.json(db.prepare("SELECT * FROM pop_products ORDER BY name").all()));
+  router.get("/categories", (req, res) => {
+    res.json(db.prepare("SELECT * FROM pop_categories ORDER BY name COLLATE NOCASE,id").all());
+  });
+  function saveCategory(req, res) {
+    const id = req.params.id ? integer(Number(req.params.id), "Categoría") : null;
+    const name = text(req.body.name, "Categoría", 60);
+    const category = transaction(db, () => {
+      const before = id === null ? null : findCategory.get(id);
+      if (id !== null && !before) fail("Categoría inexistente.", 404);
+      if (db.prepare("SELECT id FROM pop_categories WHERE name=? AND id<>?").get(name, id ?? 0))
+        fail("Ya existe una categoría con ese nombre.", 409);
+      const saved = id === null
+        ? db.prepare("INSERT INTO pop_categories(name) VALUES(?) RETURNING *").get(name)
+        : db.prepare("UPDATE pop_categories SET name=? WHERE id=? RETURNING *").get(name, id);
+      audit(db, req.user, id === null ? "create" : "update", "pop_category", saved.id, before, saved);
+      return saved;
+    });
+    res.status(id === null ? 201 : 200).json(category);
+  }
+  router.post("/categories", admin, saveCategory);
+  router.patch("/categories/:id", admin, saveCategory);
+  router.delete("/categories/:id", admin, (req, res) => {
+    const id = integer(Number(req.params.id), "Categoría");
+    transaction(db, () => {
+      const before = findCategory.get(id);
+      if (!before) fail("Categoría inexistente.", 404);
+      db.prepare("DELETE FROM pop_categories WHERE id=?").run(id);
+      audit(db, req.user, "delete", "pop_category", id, before);
+    });
+    res.json({ ok: true });
+  });
   router.get("/movements", (req, res) => res.json(db.prepare(`
     SELECT m.id,m.product_id,m.day,m.kind,m.quantity,m.detail,m.base_cents,m.surcharge_cents,m.method,
       CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
@@ -19,11 +51,17 @@ export function popModule(db, admin) {
     const price = integer(req.body.price_cents, "Precio unitario", 1, 100_000_000);
     const active = integer(req.body.active ?? 1, "Estado", 0, 1);
     const savedId = transaction(db, () => {
-      if (id && !find.get(id)) fail("Producto inexistente.", 404);
+      const previous = id ? find.get(id) : null;
+      if (id && !previous) fail("Producto inexistente.", 404);
+      const categoryId = req.body.category_id === undefined ? previous?.category_id ?? null :
+        req.body.category_id === null ? null : integer(req.body.category_id, "Categoría");
+      if (categoryId !== null && !findCategory.get(categoryId)) fail("Categoría inexistente.", 404);
       if (db.prepare("SELECT id FROM pop_products WHERE name=? AND id<>?").get(name, id ?? 0))
         fail("Ya existe un producto con ese nombre.", 409);
-      if (id) db.prepare("UPDATE pop_products SET name=?,price_cents=?,active=? WHERE id=?").run(name, price, active, id);
-      const saved = id ?? Number(db.prepare("INSERT INTO pop_products(name,price_cents,active) VALUES(?,?,?)").run(name, price, active).lastInsertRowid);
+      if (id) db.prepare("UPDATE pop_products SET name=?,price_cents=?,active=?,category_id=? WHERE id=?")
+        .run(name, price, active, categoryId, id);
+      const saved = id ?? Number(db.prepare("INSERT INTO pop_products(name,price_cents,active,category_id) VALUES(?,?,?,?)")
+        .run(name, price, active, categoryId).lastInsertRowid);
       audit(db, req.user, id ? "update" : "create", "pop_product", saved);
       return saved;
     });

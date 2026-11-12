@@ -18,10 +18,11 @@ const timeLabel = new Intl.DateTimeFormat("es-BO", {
   timeZone: "America/La_Paz", hour: "2-digit", minute: "2-digit",
 });
 
-export function Notes({ data, user, onSaved }: {
+export function Notes({ data, user, onSaved, active }: {
   data: Data;
   user: User;
   onSaved: () => Promise<void>;
+  active: boolean;
 }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,8 +40,8 @@ export function Notes({ data, user, onSaved }: {
   const latest = notes.at(-1)?.id;
   const pending = data.notes.filter((note) => !note.resolved);
   useEffect(() => {
-    if (follow.current && list.current) list.current.scrollTop = list.current.scrollHeight;
-  }, [latest]);
+    if (active && follow.current && list.current) list.current.scrollTop = list.current.scrollHeight;
+  }, [active, latest]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -445,8 +445,18 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.ok(!(await request("/cash/monthly?month=2026-11&box=pub")).body.some((row) => row.source === "folio"));
     assert.ok(historic.some((row) => row.source === "folio" && row.id === remainder.body.id && row.voided === 1));
 
-    const product = await request("/pub", { name: "Powerade", price_cents: 1500 });
+    const beverages = await request("/pub/categories", { name: "Bebidas" });
+    assert.equal(beverages.status, 201);
+    const categoryPath = `/pub/categories/${beverages.body.id}`;
+    assert.equal((await request("/pub/categories", { name: "bebidas" })).status, 409);
+    assert.equal((await request("/pub/categories", { name: "Snacks" }, "POST", receptionLogin.cookie)).status, 403);
+    assert.equal((await request(categoryPath, { name: "Bebidas frías" }, "PATCH")).body.name, "Bebidas frías");
+    assert.equal((await request("/pub/categories", undefined, "GET", receptionLogin.cookie)).body[0].name, "Bebidas frías");
+    assert.equal((await request("/pub", { name: "Inválido", price_cents: 1500, category_id: 999 })).status, 404);
+    const product = await request("/pub", { name: "Powerade", price_cents: 1500, category_id: beverages.body.id });
     assert.equal(product.status, 201);
+    assert.equal((await request(`/pub/${product.body.id}`, { name: "Powerade", price_cents: 1500 }, "PATCH")).status, 200);
+    assert.equal((await request("/pop")).body[0].category_id, beverages.body.id);
     const movements = `/pop/${product.body.id}/movements`;
     const arrival = { kind: "in", quantity: 2, detail: "Reposición" };
     assert.equal((await request(movements, arrival, "POST", receptionLogin.cookie)).status, 403);
@@ -456,6 +466,12 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal((await request(movements, sale, "POST", receptionLogin.cookie)).body.collected_cents, 3150);
     assert.equal((await request(movements, sale, "POST", receptionLogin.cookie)).status, 409);
     assert.equal((await request("/pop")).body[0].stock, 0);
+    assert.equal((await request(categoryPath, {}, "DELETE", receptionLogin.cookie)).status, 403);
+    assert.equal((await request(categoryPath, {}, "DELETE")).status, 200);
+    const uncategorized = (await request("/pub")).body[0];
+    assert.equal(uncategorized.category_id, null);
+    assert.equal(uncategorized.stock, 0);
+    assert.ok((await request("/pub/movements")).body.some((row) => row.product_id === product.body.id && row.kind === "sale"));
     const daily = (await request("/cash/daily", undefined, "GET", receptionLogin.cookie)).body;
     const pubDaily = (await request("/cash/daily?box=pub", undefined, "GET", receptionLogin.cookie)).body;
     assert.ok(pubDaily.some((row) => row.source === "pop" && row.surcharge_cents === 150
@@ -591,10 +607,13 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const changedAdvance = await request(singlePath, { ...deposit, amount_cents: 200 }, "PATCH");
     assert.equal(changedAdvance.status, 200);
     assert.equal((await request(stayPath)).body.entries[0].paid_cents, 300);
-    const regularRefund = await adminRequest(stayPath + `/payments/${changedAdvance.body.id}/refunds`,
-      { amount_cents: 50, reason: "Devolución parcial QR" });
+    const regularRefund = await request(stayPath + `/payments/${changedAdvance.body.id}/refunds`,
+      { amount_cents: 50, reason: "Devolución parcial QR" }, "POST", receptionLogin.cookie);
     assert.equal(regularRefund.status, 201);
-    assert.equal((await request(stayPath)).body.entries[0].paid_cents, 250);
+    const regularRefundSheet = (await request(stayPath, undefined, "GET", receptionLogin.cookie)).body;
+    assert.equal(regularRefundSheet.entries[0].paid_cents, 250);
+    assert.equal(regularRefundSheet.refunds[0].author, "Recepción turno tarde");
+    assert.equal(regularRefundSheet.refunds[0].method, "QR");
     assert.equal((await request(stayPath + `/payments/${changedAdvance.body.id}`, deposit, "PATCH")).status, 409);
 
     const groupHolder = {
@@ -652,19 +671,21 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const grouped = (await request(promotionalSheet)).body.stay_payments[0];
     const refundPath = promotionalSheet + `/stay-payments/${grouped.id}/refunds`;
     assert.equal((await request(refundPath, { amount_cents: 1200, reason: "Ajuste de hospedaje" },
-      "POST", receptionLogin.cookie)).status, 403);
-    const partial = await adminRequest(refundPath, { amount_cents: 1200, reason: "Ajuste de hospedaje" });
+      "POST", "")).status, 401);
+    const partial = await request(refundPath, { amount_cents: 1200, reason: "Ajuste de hospedaje" }, "POST", receptionLogin.cookie);
     assert.equal(partial.status, 201);
     assert.equal((await adminRequest(refundPath, { amount_cents: 42000, reason: "Excede el cobro" })).status, 409);
-    const afterRefund = (await request(promotionalSheet)).body;
+    const afterRefund = (await request(promotionalSheet, undefined, "GET", receptionLogin.cookie)).body;
     assert.equal(afterRefund.entries.reduce((sum, row) => sum + row.balance_cents, 0), 1200);
     assert.equal(afterRefund.stay_payments[0].retained_cents, 40800);
-    assert.equal(afterRefund.refunds[0].author, "Administración");
-    const refundRow = (await adminRequest("/cash/turns/current")).body.entries
+    assert.equal(afterRefund.refunds[0].author, "Recepción turno tarde");
+    assert.equal(afterRefund.refunds[0].reason, "Ajuste de hospedaje");
+    const turnWithRefunds = (await request("/cash/turns/current", undefined, "GET", receptionLogin.cookie)).body;
+    const refundRow = turnWithRefunds.entries
       .find((row) => row.source === "refund" && row.id === partial.body.id);
     assert.equal(refundRow.physical_cents, 1200);
     assert.equal(refundRow.kind, "expense");
-    assert.ok(!(await adminRequest("/cash/turns/current?box=pub")).body.entries.some((row) => row.source === "refund"));
+    assert.ok(!(await request("/cash/turns/current?box=pub", undefined, "GET", receptionLogin.cookie)).body.entries.some((row) => row.source === "refund"));
     const moved = {
       ...stay, guest_name: "Traslado auditado", check_in: "2098-01-01", check_out: "2098-01-02",
     };
@@ -694,10 +715,10 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal(secondReception.status, 200);
     const newTurn = (await request("/cash/turns/current", undefined, "GET", secondReception.cookie)).body;
     assert.equal(newTurn.id, ownTurn.id);
-    assert.deepEqual(newTurn.entries, ownTurn.entries);
+    assert.deepEqual(newTurn.entries, turnWithRefunds.entries);
     const previous = (await request(`/cash/turns/${ownTurn.id}`, undefined, "GET", secondReception.cookie)).body;
     assert.equal(previous.ended_at, null);
-    assert.deepEqual(previous.entries, ownTurn.entries);
+    assert.deepEqual(previous.entries, turnWithRefunds.entries);
     assert.equal(
       (await request(`/users/${receptionist.body.id}`, { active: 0 }, "PATCH"))
         .status,

@@ -1,5 +1,22 @@
 # Cambios y decisiones importantes
 
+## 2026-11-12 — Categorías del Pub y borradores de Novedades
+
+- Administración puede crear, renombrar y eliminar categorías del Pub. El catálogo se filtra por categoría y permite consultar **Sin categoría**. La migración 012 conserva el stock y el historial al eliminar una categoría o actualizar productos existentes.
+- Novedades conserva el borrador, las referencias y la respuesta al navegar por Atatau durante la sesión. Se ajustó la altura de la conversación para acercar el campo de redacción.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome con datos ficticios se verificó la gestión de categorías y el envío de un borrador después de cambiar de sección.
+
+## 2026-11-12 — Devoluciones habilitadas para recepción
+
+- Recepción puede registrar devoluciones parciales o totales de abonos y cobros de estadía. La hoja conserva importe, fecha, motivo y responsable. Caja Chica registra el egreso por el medio original en el turno de la persona que hizo la devolución.
+- Pasaron `npm test`, `npm run check` y `npm run build`. Se verificaron ambos tipos de devolución en la API y el registro desde una cuenta de recepción en Chrome con datos ficticios.
+
+## 2026-11-12 — Lectura y operación de la hoja de consumo
+
+- El saldo, los abonos y el total aparecen junto a los datos de la reserva. Los responsables de la estadía se pueden desplegar y los cobros de estadía y reembolsos tienen acceso desde el detalle de cargos.
+- Se agregó el filtro **Con saldo** y se acercaron los formularios de servicio y abono al listado. En móvil, cada cargo muestra los importes y acciones en filas sin desplazamiento lateral.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome se comprobaron el filtro, el alta de servicio, el abono desde un móvil simulado, el historial con teclado y el reembolso con datos ficticios. Se revisaron anchos de 320, 390, 768 y 1440 px.
+
 ## 2026-11-11 — Detalle de agenda y acceso a hojas desde el calendario
 
 - Las cuatro tarjetas del resumen abren modales con sus datos. Las listas de reservas muestran nombres, PAX, habitación, fechas y estado. La disponibilidad muestra las habitaciones y camas libres.

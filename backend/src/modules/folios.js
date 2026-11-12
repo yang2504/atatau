@@ -333,7 +333,6 @@ export function folioModule(db) {
       fail("El cobro ya tiene reembolsos registrados.", 409);
   }
   function refundPayment(req, res, group) {
-    if (req.user.role === "receptionist") fail("Solo administración puede registrar reembolsos.", 403);
     const folioId = integer(Number(req.params.id), "Hoja");
     const paymentId = integer(Number(req.params.paymentId), "Abono");
     const amount = integer(req.body.amount_cents, "Reembolso", 1, MAX_STAY_CENTS);

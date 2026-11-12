@@ -35,7 +35,7 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
     }
     const db = openDatabase(path);
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 11);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 12);
       assert.equal(db.prepare("SELECT COUNT(*) AS n FROM reservation_night_rates").get().n, 0);
       assert.equal(db.prepare("SELECT folio_holder FROM reservations WHERE id=1").get().folio_holder, "");
       assert.equal(db.prepare("SELECT active FROM units WHERE id=1").get().active, 1);
@@ -78,6 +78,7 @@ test("la migración 003 completa ambas variantes instaladas de la versión 002",
               VALUES(1,'Mensaje anterior','handover',1);
             INSERT INTO cash_entries(day,kind,detail,base_cents,method,user_id)
               VALUES('2026-11-01','expense','Gasto anterior',1000,'Efectivo',1);
+            INSERT INTO pop_products(name,price_cents,stock) VALUES('Producto histórico',1000,3);
             PRAGMA user_version = 2;
           `);
           if (hasReplies) {
@@ -89,7 +90,10 @@ test("la migración 003 completa ambas variantes instaladas de la versión 002",
         }
         const db = openDatabase(path);
         try {
-          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 11);
+          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 12);
+          const product = db.prepare("SELECT stock,category_id FROM pop_products WHERE name='Producto histórico'").get();
+          assert.equal(product.stock, 3);
+          assert.equal(product.category_id, null);
           assert.equal(db.prepare("SELECT cash_box FROM cash_entries").get().cash_box, "petty");
           const notes = db.prepare("SELECT body,reply_to FROM notes ORDER BY id").all();
           assert.equal(notes[0].body, "Mensaje anterior");

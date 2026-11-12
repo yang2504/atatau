@@ -1,5 +1,5 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { ErrorBox, Modal } from "../../components/UI";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { ErrorBox, Icon, Modal } from "../../components/UI";
 import { api, daysBetween, shortDate, statusNames, today } from "../../lib/api";
 import { cents, money, paymentMethods } from "../../lib/money";
 import { CardCharge } from "../../components/CardCharge";
@@ -30,6 +30,10 @@ export function FolioSheet({
   const [paymentMethod, setPaymentMethod] = useState("Efectivo");
   const [amountText, setAmountText] = useState("");
   const [voiding, setVoiding] = useState<number | null>(null);
+  const [onlyDue, setOnlyDue] = useState(false);
+  const [showService, setShowService] = useState(false);
+  const [notice, setNotice] = useState("");
+  const historyHeading = useRef<HTMLHeadingElement>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const path = `/folios/${folio.id}`;
@@ -51,10 +55,12 @@ export function FolioSheet({
   async function save(endpoint: string, body: () => unknown, done: () => void, method = "POST") {
     setBusy(true);
     setError("");
+    setNotice("");
     try {
       await api(path + endpoint, body(), method);
       done();
       setDetails(await api<FolioDetails>(path));
+      setNotice("Cambios guardados.");
       await onSaved();
     } catch (error) {
       setError((error as Error).message);
@@ -74,7 +80,7 @@ export function FolioSheet({
         detail: values.get("detail"),
         total_cents: cents(String(values.get("total"))),
       }),
-      () => form.reset(),
+      () => { form.reset(); setShowService(false); },
     );
   }
   function submitPayment(event: FormEvent<HTMLFormElement>) {
@@ -102,6 +108,7 @@ export function FolioSheet({
     setPayment(null);
     setVoiding(null);
     setRefunding(null);
+    setShowService(false);
   }
   function submitRefund(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -113,24 +120,26 @@ export function FolioSheet({
     }), closePayment);
   }
   function paymentActions(record: Payment, group = false) {
-    if (record.voided || user.role === "receptionist") return null;
+    if (record.voided || record.retained_cents <= 0) return null;
+    const canCorrect = user.role !== "receptionist" && record.retained_cents === record.amount_cents;
     return (
       <div className="row-actions">
-        {record.retained_cents > 0 && <button type="button" className="text-button" disabled={busy}
-          onClick={() => { closePayment(); setRefunding({ payment: record, group }); }}>Reembolsar</button>}
-        {record.retained_cents === record.amount_cents && user.role === "superadmin" && <button
+        <button type="button" className="text-button" disabled={busy}
+          onClick={() => { closePayment(); setRefunding({ payment: record, group }); }}>Reembolsar</button>
+        {canCorrect && user.role === "superadmin" && <button
           type="button" className="text-button" disabled={busy}
           onClick={() => {
             setPayment(null);
             setVoiding(null);
             setRefunding(null);
+            setShowService(false);
             setEditing({ payment: record, group });
             setPaymentMethod(record.method);
             setAmountText((record.amount_cents / 100).toFixed(2));
           }}>
           Editar abono
         </button>}
-        {record.retained_cents === record.amount_cents && <button type="button" className="text-button" disabled={busy}
+        {canCorrect && <button type="button" className="text-button" disabled={busy}
           onClick={() => {
             if (voiding === record.id)
               void save(paymentPath(record, group) + "/void", () => ({}), closePayment);
@@ -145,27 +154,32 @@ export function FolioSheet({
   const base = /^\d{1,9}([.,]\d{1,2})?$/.test(amountText) ? cents(amountText) : 0;
   const balance = total("balance_cents");
   const nights = daysBetween(folio.check_in, folio.check_out);
+  const dueCount = entries?.filter((row) => row.balance_cents > 0).length ?? 0;
+  const visibleEntries = onlyDue ? entries?.filter((row) => row.balance_cents > 0) : entries;
+  const hasHistory = !!(details?.stay_payments.length || details?.refunds.length);
   return (
-    <Modal title={`Hoja de consumo #${folio.id}`} onClose={onClose} wide>
+    <Modal title={`Hoja de consumo #${folio.id}`} onClose={onClose} wide className="folio-dialog">
       <div className="folio-header">
-        <div>
+        <div className="folio-identity">
+          <span className={`tag ${folio.status}`}>{statusNames[folio.status]}</span>
           <h3>{folio.title}</h3>
-          <p>
-            Reserva #{folio.reservation_id} · {folio.platform_name}
-          </p>
+          <p>Reserva #{folio.reservation_id} · {folio.platform_name} · {folio.folio_mode === "shared" ? "Cuenta conjunta" : "Cuenta individual"}</p>
+          <p>{locations.join(" / ") || folio.room_name || "Habitación sin asignar"}</p>
+          <p>{shortDate(folio.check_in, true)} → {shortDate(folio.check_out, true)} · {nights} {nights === 1 ? "noche" : "noches"} · {folio.pax} PAX</p>
+          {folio.arrival_time && <p>Llegada prevista · {folio.arrival_time}</p>}
         </div>
-        <span className={`tag ${folio.status}`}>
-          {statusNames[folio.status]}
-        </span>
-        <p>
-          {folio.pax} PAX en la reserva ·{" "}
-          {nights} {nights === 1 ? "noche" : "noches"} ·{" "}
-          {shortDate(folio.check_in, true)} → {shortDate(folio.check_out, true)}
-        </p>
-        <p>Hora prevista de llegada · {folio.arrival_time || "Sin programar"}</p>
-        <p>{locations.join(" / ")}</p>
+        {entries && <dl className="folio-summary" aria-label="Resumen de la cuenta">
+          <div><dt>Total de cargos</dt><dd>{money(total("total_cents"))}</dd></div>
+          <div><dt>Abonos registrados</dt><dd>{money(total("paid_cents"))}</dd></div>
+          <div className={balance > 0 ? "folio-balance-due" : ""}>
+            <dt>{balance > 0 ? "Saldo pendiente" : "Saldo"}</dt><dd>{money(balance)}</dd>
+          </div>
+        </dl>}
       </div>
-      {reservation && <ReservationStaff reservation={reservation} />}
+      {reservation && <details className="folio-staff">
+        <summary>Responsables de la estadía</summary>
+        <ReservationStaff reservation={reservation} />
+      </details>}
       {folio.nightly_cents === null && (
         <p className="form-note">
           Registra la tarifa en la reserva para que aparezcan las noches de
@@ -173,92 +187,174 @@ export function FolioSheet({
         </p>
       )}
       <ErrorBox message={error} />
+      <p className="folio-feedback" role="status">{notice}</p>
       {!entries && !error && <p role="status">Cargando movimientos…</p>}
-      {entries && <dl className="folio-summary" aria-label="Resumen de la cuenta">
-        <div><dt>Total de cargos</dt><dd>{money(total("total_cents"))}</dd></div>
-        <div><dt>Abonos registrados</dt><dd>{money(total("paid_cents"))}</dd></div>
-        <div className={balance > 0 ? "folio-balance-due" : "folio-balance-paid"}>
-          <dt>Saldo pendiente</dt><dd>{money(balance)}</dd>
-        </div>
-      </dl>}
-      {!!details?.stay_payments.length && <section className="folio-form form-stack">
-        <h3>Cobros de estadía</h3>
-        {details.stay_payments.map((record) => <article key={record.id} className="form-note">
-          <strong>{money(record.amount_cents)} · {record.method}</strong>
-          <p>{shortDate(record.day)} · Cobrado por <strong>{record.author}</strong>{record.voided ? " · Anulado" : ""}</p>
-          {record.retained_cents < record.amount_cents && <p>Reembolsado {money(record.amount_cents - record.retained_cents)}</p>}
-          {record.folio_cents !== record.amount_cents && <p>Aplicado a esta hoja {money(record.folio_cents)}</p>}
-          {record.surcharge_cents > 0 && <p>Comisión {money(record.surcharge_cents)} · Cobrado {money(record.amount_cents + record.surcharge_cents)}</p>}
-          {paymentActions(record, true)}
-        </article>)}
-      </section>}
-      {!!details?.refunds.length && <section className="folio-form form-stack">
-        <h3>Reembolsos registrados</h3>
-        {details.refunds.map((refund) => <article key={refund.id} className="form-note">
-          <strong>{money(refund.amount_cents)} · {refund.method}</strong>
-          <p>{shortDate(refund.day, true)} · {refund.author} · Cobro #{refund.payment_id}</p>
-          <p>{refund.reason}</p>
-          {refund.folio_cents !== refund.amount_cents && <p>Aplicado a esta hoja {money(refund.folio_cents)}</p>}
-        </article>)}
-      </section>}
-      {refunding && <form key={refunding.payment.id} className="form-stack folio-form" onSubmit={submitRefund}>
-        <h3>Registrar reembolso</h3>
-        <p>Disponible {money(refunding.payment.retained_cents)} · {refunding.payment.method}</p>
-        {refunding.group && <p>Se descuenta de las últimas partidas de este cobro de estadía.</p>}
-        <div className="form-grid">
-          <label>Importe a devolver (Bs)<input name="amount" inputMode="decimal" pattern="[0-9]{1,9}([.,][0-9]{1,2})?" required autoFocus /></label>
-          <label>Motivo<input name="reason" maxLength={160} required /></label>
-        </div>
-        <div className="modal-actions">
-          <button type="button" className="button secondary" onClick={closePayment} disabled={busy}>Cancelar</button>
-          <button className="button primary" disabled={busy}>Registrar reembolso</button>
-        </div>
-      </form>}
       {entries && (
         <section className="folio-movements">
-          <h3>Detalle de cargos</h3>
+          <div className="folio-toolbar-main">
+            <div>
+              <h3>Detalle de cargos</h3>
+              <div className="folio-filters" role="group" aria-label="Filtrar cargos">
+                <button type="button" aria-pressed={!onlyDue} onClick={() => setOnlyDue(false)}>Todos ({entries.length})</button>
+                <button type="button" aria-pressed={onlyDue} onClick={() => setOnlyDue(true)}>Con saldo ({dueCount})</button>
+              </div>
+            </div>
+            <div className="folio-toolbar-actions">
+              {hasHistory && <button type="button" className="button secondary compact"
+                onClick={() => historyHeading.current?.focus()}>Cobros y reembolsos</button>}
+              {!cancelled && <button type="button" className="button primary compact" aria-expanded={showService}
+                disabled={busy} onClick={() => { const open = !showService; closePayment(); setShowService(open); }}>
+                <Icon name="plus" size={16} /> Agregar servicio
+              </button>}
+            </div>
+          </div>
+          {refunding && <form key={refunding.payment.id} className="form-stack folio-form" onSubmit={submitRefund}>
+            <h3>Registrar reembolso</h3>
+            <p>Disponible {money(refunding.payment.retained_cents)} · {refunding.payment.method}</p>
+            {refunding.group && <p>Se descuenta de las últimas partidas de este cobro de estadía.</p>}
+            <div className="form-grid">
+              <label>Importe a devolver (Bs)<input name="amount" inputMode="decimal" pattern="[0-9]{1,9}([.,][0-9]{1,2})?" required autoFocus /></label>
+              <label>Motivo<input name="reason" maxLength={160} required /></label>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="button secondary" onClick={closePayment} disabled={busy}>Cancelar</button>
+              <button className="button primary" disabled={busy}>Registrar reembolso</button>
+            </div>
+          </form>}
+          {(payment || editing) && (
+            <form
+              key={editing ? `edit-${editing.payment.id}` : payment?.lodging_day ?? payment?.service_id}
+              className="form-stack folio-form"
+              onSubmit={submitPayment}
+            >
+              <h3>
+                {editing ? (editing.group ? "Editar cobro de estadía" : "Editar abono")
+                  : payment && `Abonar · ${payment.service} del ${shortDate(payment.day)}`}
+              </h3>
+              {payment && <p>Saldo disponible · {money(payment.balance_cents)}</p>}
+              {editing?.group && <p>La corrección se aplica a todas las hojas vinculadas al cobro.</p>}
+              <div className="form-grid">
+                <label>
+                  Fecha del abono
+                  <input name="day" type="date" defaultValue={editing?.payment.day ?? today()} required />
+                </label>
+                <label>
+                  Abono (Bs)
+                  <input
+                    name="amount"
+                    inputMode="decimal"
+                    pattern={editing?.group ? "[0-9]{1,9}([.,][0-9]{1,2})?" : "[0-9]{1,7}([.,][0-9]{1,2})?"}
+                    value={amountText}
+                    onChange={(event) => setAmountText(event.target.value)}
+                    required
+                    autoFocus
+                  />
+                </label>
+                <label>
+                  Pago con
+                  <select name="method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+                    {paymentMethods.map(
+                      (method) => (
+                        <option key={method}>{method}</option>
+                      ),
+                    )}
+                  </select>
+                </label>
+              </div>
+              {paymentMethod === "Tarjeta" && <CardCharge base={base} />}
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className="button secondary"
+                  onClick={closePayment}
+                >
+                  Cancelar
+                </button>
+                <button className="button primary" disabled={busy}>
+                  {editing ? "Guardar corrección" : "Registrar abono"}
+                </button>
+              </div>
+            </form>
+          )}
+          {showService && (
+            <form className="form-stack folio-form" onSubmit={submitService}>
+              <h3>Agregar servicio</h3>
+              <div className="form-grid">
+                <label>
+                  Fecha del servicio
+                  <input name="day" type="date" defaultValue={today()} required />
+                </label>
+                <label>
+                  Servicio
+                  <input
+                    name="service"
+                    placeholder="Ej. Lavandería"
+                    maxLength={80}
+                    required
+                    autoFocus
+                  />
+                </label>
+                <label>
+                  Detalle
+                  <input name="detail" maxLength={500} required />
+                </label>
+                <label>
+                  Total (Bs)
+                  <input
+                    name="total"
+                    inputMode="decimal"
+                    pattern="[0-9]{1,7}([.,][0-9]{1,2})?"
+                    required
+                  />
+                </label>
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="button secondary" onClick={closePayment} disabled={busy}>Cancelar</button>
+                <button className="button primary" disabled={busy}>Registrar servicio</button>
+              </div>
+            </form>
+          )}
           {!entries.length ? <p className="muted">Aún no hay cargos en esta hoja.</p> :
-          <div className="table-scroll">
-          <table className="folio-table">
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Servicio</th>
-                <th>Total</th>
-                <th>Abonado</th>
-                <th>Saldo</th>
-                <th>Responsables</th>
-                <th>Acción</th>
+          !visibleEntries?.length ? <p className="muted">Todos los cargos están al día.</p> :
+          <table className="folio-table" role="table" aria-label="Cargos de la hoja">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col">Servicio y fecha</th>
+                <th role="columnheader" scope="col">Total</th>
+                <th role="columnheader" scope="col">Abonado</th>
+                <th role="columnheader" scope="col">Saldo</th>
+                <th role="columnheader" scope="col">Responsables</th>
+                <th role="columnheader" scope="col">Acciones</th>
               </tr>
             </thead>
-            <tbody>
-              {entries.map((row) => {
+            <tbody role="rowgroup">
+              {visibleEntries.map((row) => {
                 const cashiers = row.cashiers;
-                return <tr key={row.lodging_day ?? row.service_id}>
-                  <td>{shortDate(row.day, true)}</td>
-                  <td>
-                    <strong className={row.balance_cents > 0 ? "unpaid-charge" : undefined}>{row.service}</strong>
-                    <small className="cell-sub">{row.detail}</small>
+                return <tr role="row" key={row.lodging_day ?? row.service_id}>
+                  <td role="cell" className="folio-charge-name">
+                    <strong>{row.service}</strong>
+                    <small className="cell-sub">{shortDate(row.day, true)} · {row.detail}</small>
                   </td>
-                  <td>{money(row.total_cents)}</td>
-                  <td>
+                  <td role="cell" className="folio-amount" data-label="Total">{money(row.total_cents)}</td>
+                  <td role="cell" className="folio-amount" data-label="Abonado">
                     {money(row.paid_cents)}
                     {!!row.stay_paid_cents && <small className="cell-sub">Incluido en cobro de estadía</small>}
                   </td>
-                  <td className={row.balance_cents > 0 ? "folio-row-due" : undefined}>
+                  <td role="cell" className={`folio-amount${row.balance_cents > 0 ? " folio-row-due" : ""}`} data-label="Saldo">
                     <strong>{money(row.balance_cents)}</strong>
                     <small className="cell-sub">{row.balance_cents > 0 ? "Pendiente de pago" : row.total_cents === 0 ? "Sin cargo" : "Pagado"}</small>
                   </td>
-                  <td>
+                  <td role="cell" className="folio-operators">
                     {row.author && <span className="folio-operator">Registro · {row.author}</span>}
                     {!!cashiers.length && <span className="folio-operator">Abono · {cashiers.join(", ")}</span>}
                     {!row.author && !cashiers.length && "—"}
                   </td>
-                  <td>
+                  <td role="cell" className="folio-charge-actions">
                     {!cancelled && row.balance_cents > 0 && (
                       <button
                         type="button"
-                        className="text-button"
+                        className="button secondary compact"
+                        aria-label={`Abonar ${row.service} del ${shortDate(row.day, true)}`}
                         disabled={busy}
                         onClick={() => {
                           setPayment(row);
@@ -267,6 +363,7 @@ export function FolioSheet({
                           setPaymentMethod("Efectivo");
                           setVoiding(null);
                           setRefunding(null);
+                          setShowService(false);
                         }}
                       >
                         Abonar
@@ -274,14 +371,14 @@ export function FolioSheet({
                     )}
                     {row.payments.length > 0 && (
                       <details className="payment-history">
-                        <summary>Ver abonos</summary>
+                        <summary>Ver abonos ({row.payments.length})</summary>
                         {row.payments.map((p) => (
-                          <div key={p.id}>
-                            {shortDate(p.day)} · {money(p.amount_cents)} ·{" "}
-                            {p.method} · {p.author}
+                          <div key={p.id} className="folio-payment-item">
+                            <strong>{money(p.amount_cents)} · {p.method}</strong>
+                            <p>{shortDate(p.day, true)} · {p.author}
                             {p.surcharge_cents > 0 && ` · ${p.method === "Tarjeta" ? "Comisión descontada" : "Recargo histórico"} ${money(p.surcharge_cents)} · Cobrado ${money(p.amount_cents + p.surcharge_cents)}`}
                             {p.voided ? " · Anulado" : ""}
-                            {p.retained_cents < p.amount_cents && ` · Reembolsado ${money(p.amount_cents - p.retained_cents)}`}
+                            {p.retained_cents < p.amount_cents && ` · Reembolsado ${money(p.amount_cents - p.retained_cents)}`}</p>
                             {paymentActions(p)}
                           </div>
                         ))}
@@ -291,103 +388,32 @@ export function FolioSheet({
                 </tr>;
               })}
             </tbody>
-          </table>
-          </div>}
+          </table>}
         </section>
       )}
-      {(payment || editing) && (
-        <form
-          key={editing ? `edit-${editing.payment.id}` : payment?.lodging_day ?? payment?.service_id}
-          className="form-stack folio-form"
-          onSubmit={submitPayment}
-        >
-          <h3>
-            {editing ? (editing.group ? "Editar cobro de estadía" : "Editar abono")
-              : payment && `Abonar · ${payment.service} del ${shortDate(payment.day)}`}
-          </h3>
-          {payment && <p>Saldo disponible · {money(payment.balance_cents)}</p>}
-          {editing?.group && <p>La corrección se aplica a todas las hojas vinculadas al cobro.</p>}
-          <div className="form-grid">
-            <label>
-              Fecha del abono
-              <input name="day" type="date" defaultValue={editing?.payment.day ?? today()} required />
-            </label>
-            <label>
-              Abono (Bs)
-              <input
-                name="amount"
-                inputMode="decimal"
-                pattern={editing?.group ? "[0-9]{1,9}([.,][0-9]{1,2})?" : "[0-9]{1,7}([.,][0-9]{1,2})?"}
-                value={amountText}
-                onChange={(event) => setAmountText(event.target.value)}
-                required
-                autoFocus
-              />
-            </label>
-            <label>
-              Pago con
-              <select name="method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
-                {paymentMethods.map(
-                  (method) => (
-                    <option key={method}>{method}</option>
-                  ),
-                )}
-              </select>
-            </label>
-          </div>
-          {paymentMethod === "Tarjeta" && <CardCharge base={base} />}
-          <div className="modal-actions">
-            <button
-              type="button"
-              className="button secondary"
-              onClick={closePayment}
-            >
-              Cancelar
-            </button>
-            <button className="button primary" disabled={busy}>
-              {editing ? "Guardar corrección" : "Registrar abono"}
-            </button>
-          </div>
-        </form>
-      )}
-      {!cancelled && !payment && !editing && !refunding && (
-        <details className="folio-form">
-          <summary>Agregar servicio</summary>
-          <form className="form-stack" onSubmit={submitService}>
-            <div className="form-grid">
-              <label>
-                Fecha del servicio
-                <input name="day" type="date" defaultValue={today()} required />
-              </label>
-              <label>
-                Servicio
-                <input
-                  name="service"
-                  placeholder="Ej. Lavandería"
-                  maxLength={80}
-                  required
-                />
-              </label>
-              <label>
-                Detalle
-                <input name="detail" maxLength={500} required />
-              </label>
-              <label>
-                Total (Bs)
-                <input
-                  name="total"
-                  inputMode="decimal"
-                  pattern="[0-9]{1,7}([.,][0-9]{1,2})?"
-                  required
-                />
-              </label>
-            </div>
-            <button className="button primary" disabled={busy}>
-              Registrar servicio
-            </button>
-          </form>
-        </details>
-      )}
+      {hasHistory && <section className="folio-history">
+        <h3 tabIndex={-1} ref={historyHeading}>Cobros de estadía y reembolsos</h3>
+        {!!details?.stay_payments.length && <div className="folio-history-group">
+          <h4>Cobros de estadía</h4>
+          {details.stay_payments.map((record) => <article key={record.id} className="folio-history-item">
+            <strong>{money(record.amount_cents)} · {record.method}</strong>
+            <p>{shortDate(record.day)} · Cobrado por <strong>{record.author}</strong>{record.voided ? " · Anulado" : ""}</p>
+            {record.retained_cents < record.amount_cents && <p>Reembolsado {money(record.amount_cents - record.retained_cents)}</p>}
+            {record.folio_cents !== record.amount_cents && <p>Aplicado a esta hoja {money(record.folio_cents)}</p>}
+            {record.surcharge_cents > 0 && <p>Comisión {money(record.surcharge_cents)} · Cobrado {money(record.amount_cents + record.surcharge_cents)}</p>}
+            {paymentActions(record, true)}
+          </article>)}
+        </div>}
+        {!!details?.refunds.length && <div className="folio-history-group">
+          <h4>Reembolsos registrados</h4>
+          {details.refunds.map((refund) => <article key={refund.id} className="folio-history-item">
+            <strong>{money(refund.amount_cents)} · {refund.method}</strong>
+            <p>{shortDate(refund.day, true)} · {refund.author} · Cobro #{refund.payment_id}</p>
+            <p>{refund.reason}</p>
+            {refund.folio_cents !== refund.amount_cents && <p>Aplicado a esta hoja {money(refund.folio_cents)}</p>}
+          </article>)}
+        </div>}
+      </section>}
     </Modal>
   );
 }

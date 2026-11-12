@@ -33,7 +33,7 @@ En desarrollo: frontend `127.0.0.1:5173` con proxy de `/api` hacia `127.0.0.1:30
 - `notes`: mensajes entre turnos con respuesta opcional a otro mensaje, referencias a habitación o reserva y gasto informativo.
 - `guest_rates`: sugerencias del talonario por habitación, PAX y desayuno.
 - `cash_entries`: ingresos y egresos manuales con anulación administrativa. La consulta de caja también incluye los abonos y ventas POP en su fecha de cobro.
-- `pop_products` y `pop_movements`: catálogo, stock y movimientos. La venta guarda precio, cantidad y recargo antes de actualizar existencias.
+- `pop_categories`, `pop_products` y `pop_movements`: categorías opcionales, catálogo, stock y movimientos. Al eliminar una categoría, SQLite libera la asignación de sus productos. La venta guarda precio, cantidad y recargo antes de actualizar existencias.
 - `shift_schedules` guarda horarios semanales por usuario. `cash_turns` guarda instancias de esos horarios y tramos operativos fuera de horario. Los movimientos se vinculan a la instancia en curso.
 - `folio_refunds` y `folio_refund_allocations` guardan el egreso y su aplicación a los cobros originales. `folio_payment_balances` calcula el importe retenido para la hoja y la reserva.
 - `audit_log`: acción, registro, usuario y hora. Las operaciones de reservas, hojas y caja guardan valores anterior y nuevo dentro de su transacción. El visor administrativo protege la identidad del superadministrador según el rol.
@@ -69,13 +69,14 @@ Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "err
 | `POST /api/folios/:id/payments/:paymentId/void` | Anular abono, solo administración |
 | `GET /api/cash/turns`, `GET /api/cash/turns/:id` | Listado paginado y movimientos por turno. `current` resuelve el de la sesión. Recepción consulta sus propios turnos |
 | `GET/POST /api/shifts`, `PUT /api/shifts/:id` | Consultar y ajustar el horario semanal desde administración |
-| `POST /api/folios/:id/payments/:paymentId/refunds` y variante `stay-payments` | Registrar un reembolso por importe base y motivo desde administración |
+| `POST /api/folios/:id/payments/:paymentId/refunds` y variante `stay-payments` | Registrar un reembolso por importe base y motivo con una cuenta activa de recepción o administración |
 | `GET /api/cash/daily`, `GET /api/cash/monthly?month=AAAA-MM` | Caja por fecha para administración. La ruta diaria devuelve el turno actual para recepción. Cada movimiento incluye el importe base y su aporte al efectivo físico |
 | `POST /api/cash`, `POST /api/cash/:id/void` | Registrar movimiento manual y anularlo con permiso administrativo. Caja Pub admite egresos manuales y recibe ingresos nuevos desde ventas de inventario |
 | `GET /api/bcb/usd` | Cotización oficial, vigencia, disponibilidad y tipo de cambio aplicable a tarifas |
 | `GET/PUT /api/lodging-exchange-rate` | Consultar y configurar el tipo de cambio de respaldo. Solo administración escribe |
 | `GET /api/audit` | Historial paginado de reservas, hojas y caja, solo administración |
 | `GET/POST /api/pop`, `PATCH /api/pop/:id` | Consultar catálogo y gestionarlo con permiso administrativo |
+| `GET/POST /api/pub/categories`, `PATCH/DELETE /api/pub/categories/:id` | Consultar categorías. Las altas, cambios y bajas requieren administración |
 | `GET /api/pop/movements`, `POST /api/pop/:id/movements` | Historial y movimientos de stock. Recepción puede registrar ventas |
 
 La interfaz no expone aún renombrar habitaciones aunque la API lo permite. No hay API de borrado. Las respuestas de reservas incluyen `unit_ids` y huéspedes; habitaciones incluyen sus `units`. El frontend carga colecciones pequeñas tras cada cambio. Este límite es deliberado para una recepción; añadir consultas por rango/paginación cuando el volumen medido lo justifique.

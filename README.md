@@ -61,19 +61,19 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - Talonario editable en **Configuración → Tarifas sugeridas → Talonario**, por habitación, PAX y desayuno. Para reservas nuevas se sugiere la tarifa específica del canal, luego la del talonario y finalmente la base de la habitación, según disponibilidad. Recepción puede escribir el importe acordado por noche para todo el grupo. El talonario empieza vacío para cargar importes verificados.
 - Hojas de consumo conjuntas o individuales con hospedaje por noche, cargos de servicios, abonos parciales, saldo y registro del medio de pago y del usuario. Los importes individuales reparten la tarifa del grupo de forma que la suma sea exacta.
 - Las reservas pendientes se muestran con borde discontinuo y fondo transparente. En las confirmadas, el naranja indica noches pagadas, el amarillo indica saldo y el gris indica noches sin tarifa o sin cargo.
-- **Novedades** funciona como chat grupal con nombres, colores y respuestas. La conversación visible abarca ayer y hoy en hora de Bolivia. Los mensajes anteriores siguen guardados y los pendientes de otras fechas se pueden consultar y resolver desde el panel lateral.
+- **Novedades** funciona como chat grupal con nombres, colores y respuestas. La conversación visible abarca ayer y hoy en hora de Bolivia. Puedes consultar otras secciones durante la misma sesión y volver al borrador con su texto, referencias y respuesta. Los pendientes de otras fechas se pueden consultar y resolver desde el panel lateral.
 - Al pulsar **Registrar llegada**, la reserva guarda el usuario que recibió a los huéspedes y la fecha y hora del registro. Las llegadas anteriores a esta función quedan sin ese dato.
 - En **Reservas** se elige el plan con o sin desayuno para toda la estadía. **Desayunos** muestra por fecha las personas, su habitación y su reserva. Cuenta un desayuno por persona la mañana siguiente a cada noche, incluida la salida. Separa los pendientes de confirmación y omite las cancelaciones.
 - Al registrar una llegada, puedes cobrar el saldo completo del hospedaje con un solo pago. En una reserva pendiente, **Confirmar y registrar llegada** permite hacerlo en el mismo paso. La hoja muestra un comprobante de estadía y Caja Chica recibe un solo movimiento. Las hojas individuales muestran cuánto les corresponde del mismo pago.
 - **Hojas de consumo** separa habitaciones privadas y dormitorios. Cambia de habitación mediante las pestañas encima de la tabla o consulta todas las habitaciones del tipo elegido. También puedes filtrar por huésped, número de reserva y mes. En cada mes aparecen las hojas con noches, servicios o abonos en ese período.
-- Los cargos con saldo tienen un subrayado rojo y el texto **Pendiente de pago**. Los abonos parciales conservan la señal hasta cubrir el saldo. Al anular un abono, la señal reaparece si queda saldo.
-- La hoja muestra el total de cargos, los abonos y el saldo pendiente antes del detalle. En cada consumo se distingue a quien registró el cargo de quien recibió el abono. Los cobros de estadía tienen sus propios comprobantes.
+- La hoja muestra total, abonos y saldo junto a los datos de la reserva. El filtro **Con saldo** reúne los cargos pendientes. El importe y el estado se distinguen en rojo hasta cubrir el saldo.
+- Desde **Detalle de cargos** puedes agregar servicios, abonar una partida y consultar sus abonos. Los comprobantes de estadía y las devoluciones tienen un acceso junto a los cargos. En pantallas estrechas, cada cargo muestra los importes y acciones sin desplazamiento horizontal.
 - En una reserva puedes elegir una hoja por huésped o una cuenta conjunta a nombre de la persona encargada. Si dejas el encargado vacío, se usa el titular de la reserva.
 - **Caja Chica** registra automáticamente los abonos de las hojas de consumo y los cobros de hospedaje. **Caja Pub** recibe sus ingresos nuevos exclusivamente de las ventas de Inventario Pub. Administración puede registrar egresos propios del Pub. Los ingresos manuales anteriores de Caja Pub se identifican como históricos.
 - Cada caja tiene dos pestañas de movimientos. **Efectivo** muestra las entradas y salidas físicas. **Transferencia** reúne QR, tarjeta, transferencia y otros medios, al importe base. Los cobros rápidos y los abonos aparecen automáticamente según el método registrado.
 - En **Turnos**, administración arrastra personas al calendario semanal y ajusta el inicio y fin de cada turno. El horario se repite hasta editarlo. Cada operador conserva el mismo turno al volver a iniciar sesión dentro de su horario. Fuera del horario asignado, la caja usa el tramo disponible del día en hora de Bolivia. **Historial de turnos** muestra los movimientos y la hora de cierre.
 - **Convertir tarifa de USD a Bs** consulta el tipo de cambio oficial del BCB al activar la casilla. Puedes aplicar el equivalente a una reserva, una extensión o el talonario. Si el BCB no responde, se usa el último dato oficial guardado mientras esté vigente. Cuando falta una cotización vigente, se usa el respaldo de **Configuración → Tipo de cambio para hospedaje**, si administración lo guardó. El importe aplicado se redondea al centavo y se guarda en bolivianos.
-- **Inventario Pub** registra productos, entradas, bajas y ventas. Cada venta descuenta unidades y registra el ingreso en Caja Pub dentro de la misma transacción.
+- **Inventario Pub** permite filtrar el catálogo por categoría. Administración puede crear, renombrar y eliminar categorías, y asignarlas a productos. Al eliminar una categoría, sus productos pasan a **Sin categoría** y conservan sus existencias e historial. Cada venta descuenta unidades y registra el ingreso en Caja Pub dentro de la misma transacción.
 - **Auditoría** permite a administración consultar el usuario, la hora local y los valores anterior y nuevo de reservas, llegadas, cambios de habitación y fechas, cancelaciones, consumos, abonos y movimientos de caja. Los registros históricos conservan la información que se guardaba en su momento.
 
 ## Reglas de operación
@@ -88,7 +88,7 @@ Al cobrar con **tarjeta**, ingresa el importe base. El total a cobrar incluye el
 
 En **Hojas de consumo**, el superadministrador puede editar el importe, la fecha y el medio de pago de un abono activo. Al editar, la versión anterior queda anulada y la corrección actualiza los saldos y Caja Chica. Administración y el superadministrador pueden anular abonos. Si se anula un cobro de estadía, se revierten todas sus aplicaciones a la vez.
 
-El cobro rápido de entrada muestra quién cobró en el comprobante y en las noches afectadas. Desde el comprobante o el historial de un abono, administración puede registrar un **reembolso parcial o total** con motivo. Se registra como egreso de Caja Chica en el medio original, por el importe base devuelto, y reduce lo abonado en la hoja. Los reembolsos de un cobro de estadía se aplican desde sus últimas partidas. Una vez reembolsado, el cobro se conserva para consultar su historial y registrar devoluciones adicionales hasta agotar el importe.
+El cobro rápido de entrada muestra quién cobró en el comprobante y en las noches afectadas. Desde el comprobante o el historial de un abono, recepción y administración pueden registrar un **reembolso parcial o total** con motivo. La hoja guarda el importe, la fecha, el motivo y la persona que lo registró. La devolución se registra como egreso de Caja Chica por el medio original y reduce lo abonado en la hoja. Los reembolsos de un cobro de estadía se aplican desde sus últimas partidas. Una vez reembolsado, el cobro se conserva para consultar su historial y registrar devoluciones adicionales hasta agotar el importe.
 
 En el formulario de reserva elige **Confirmada** o **Pendiente**. Ambas apartan disponibilidad. Las operaciones de llegada, salida y cancelación están en **Acciones de la estadía**.
 
@@ -103,6 +103,7 @@ Las personas acompañantes sin nombre se guardan como `Acompañante 2`, etc. Fal
 | Acción | Recepcionista | Administradora | Superadministrador |
 | --- | --- | --- | --- |
 | Calendario, reservas, hojas y novedades | Sí | Sí | Sí |
+| Registrar devoluciones desde las hojas de consumo | Sí | Sí | Sí |
 | Habitaciones y plataformas | Consulta | Gestiona | Gestiona |
 | Crear/activar/desactivar recepcionistas | No | Sí | Sí |
 | Editar nombre, usuario y color de recepcionistas | No | Sí | Sí |
@@ -111,7 +112,7 @@ Las personas acompañantes sin nombre se guardan como `Acompañante 2`, etc. Fal
 | Consultar turnos del equipo, auditoría y configurar el cambio de hospedaje | No | Sí | Sí |
 | Ver cuaderno mensual, registrar egresos y anular movimientos manuales | No | Sí | Sí |
 | Consultar Inventario Pub y registrar ventas | Sí | Sí | Sí |
-| Editar Inventario Pub y registrar entradas o bajas de stock | No | Sí | Sí |
+| Gestionar productos y categorías del Pub y registrar entradas o bajas de stock | No | Sí | Sí |
 
 Solo el rol superadministrador ve las cuentas y novedades de ese nivel. Los demás roles ven los movimientos compartidos necesarios para operar, con la identidad del superadministrador protegida. Administración puede editar su propio perfil y gestionar las cuentas de recepción.
 
@@ -123,7 +124,7 @@ La base es `atatau.sqlite` dentro de `%LOCALAPPDATA%\HostelAtatau\data` en el pa
 
 SQLite conserva los registros sin una fecha de vencimiento. Con las páginas de 4096 bytes de este sistema, su límite teórico ronda los 17,5 TB. En recepción importa el espacio libre del disco y el volumen que se carga en cada pantalla. Una prueba local con 1.000 reservas ficticias, 3 huéspedes, 2 noches, 2 abonos y una novedad por reserva añadió aproximadamente 0,66 MB a SQLite. El tamaño real depende de la cantidad y el contenido de los registros. [Límites oficiales de SQLite](https://sqlite.org/limits.html)
 
-Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 011 incorpora horarios semanales y reembolsos. Las cajas conservan sus turnos y movimientos anteriores.
+Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La migración 011 incorpora horarios semanales y reembolsos. La migración 012 incorpora categorías del Pub y deja los productos existentes en **Sin categoría**.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 
