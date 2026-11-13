@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorBox, Icon, Modal } from "../../components/UI";
-import { api, daysBetween, shortDate, statusNames, today } from "../../lib/api";
+import { addDays, api, daysBetween, shortDate, statusNames, today } from "../../lib/api";
 import { cents, money, paymentMethods } from "../../lib/money";
 import { CardCharge } from "../../components/CardCharge";
 import { ReservationStaff } from "../reservations/ReservationStaff";
@@ -33,6 +33,7 @@ export function FolioSheet({
   const [onlyDue, setOnlyDue] = useState(false);
   const [showService, setShowService] = useState(false);
   const [payStay, setPayStay] = useState(false);
+  const [showRate, setShowRate] = useState(false);
   const [notice, setNotice] = useState("");
   const historyHeading = useRef<HTMLHeadingElement>(null);
   const [error, setError] = useState("");
@@ -47,7 +48,8 @@ export function FolioSheet({
     (r) => r.id === folio.reservation_id,
   );
   const locations = data.rooms.flatMap((room) => {
-    const units = room.units.filter((unit) => reservation?.unit_ids.includes(unit.id));
+    const units = room.units.filter((unit) => folio.extra_unit_id ? unit.id === folio.extra_unit_id
+      : reservation?.occupancy.some((span) => span.unit_id === unit.id));
     if (!units.length) return [];
     const pax = reservation?.room_assignments.find((item) => item.room_id === room.id)?.pax;
     const detail = room.type === "dorm" ? units.map((unit) => unit.label).join(", ")
@@ -111,6 +113,7 @@ export function FolioSheet({
     return `/${group ? "stay-payments" : "payments"}/${payment.id}`;
   }
   function closePayment() {
+    setShowRate(false);
     setPayStay(false);
     setEditing(null);
     setPayment(null);
@@ -159,7 +162,8 @@ export function FolioSheet({
   const base = /^\d{1,9}([.,]\d{1,2})?$/.test(amountText) ? cents(amountText) : 0;
   const balance = total("balance_cents");
   const stayBalance = entries?.reduce((sum, row) => sum + (row.lodging_day ? row.balance_cents : 0), 0) ?? 0;
-  const nights = daysBetween(folio.check_in, folio.check_out);
+  const arrival = folio.joined_on ?? folio.check_in;
+  const nights = daysBetween(arrival, folio.check_out);
   const dueCount = entries?.filter((row) => row.balance_cents > 0).length ?? 0;
   const visibleEntries = onlyDue ? entries?.filter((row) => row.balance_cents > 0) : entries;
   const hasHistory = !!(details?.stay_payments.length || details?.refunds.length);
@@ -171,7 +175,7 @@ export function FolioSheet({
           <h3>{folio.title}</h3>
           <p>Reserva #{folio.reservation_id} · {folio.platform_name} · {folio.folio_mode === "shared" ? "Cuenta conjunta" : "Cuenta individual"}</p>
           <p>{locations.join(" / ") || folio.room_name || "Habitación sin asignar"}</p>
-          <p>{shortDate(folio.check_in, true)} → {shortDate(folio.check_out, true)} · {nights} {nights === 1 ? "noche" : "noches"} · {folio.pax} PAX</p>
+          <p>{shortDate(arrival, true)} → {shortDate(folio.check_out, true)} · {nights} {nights === 1 ? "noche" : "noches"} · {folio.joined_on ? 1 : folio.pax + (folio.guest_id === null ? reservation?.added_guests.length ?? 0 : 0)} PAX</p>
           {folio.arrival_time && <p>Llegada prevista · {folio.arrival_time}</p>}
         </div>
         {entries && <dl className="folio-summary" aria-label="Resumen de la cuenta">
@@ -186,7 +190,7 @@ export function FolioSheet({
         <summary>Responsables de la estadía</summary>
         <ReservationStaff reservation={reservation} />
       </details>}
-      {folio.nightly_cents === null && (
+      {folio.nightly_cents === null && !folio.joined_on && (
         <p className="form-note">
           Registra la tarifa en la reserva para que aparezcan las noches de
           hospedaje.
@@ -206,6 +210,10 @@ export function FolioSheet({
               </div>
             </div>
             <div className="folio-toolbar-actions">
+              {!cancelled && reservation && !folio.joined_on && <button type="button" className="button secondary compact"
+                disabled={busy} aria-expanded={showRate} onClick={() => { const open = !showRate; closePayment(); setShowRate(open); }}>
+                Ajustar tarifa de hospedaje
+              </button>}
               {hasHistory && <button type="button" className="button secondary compact"
                 onClick={() => historyHeading.current?.focus()}>Cobros y reembolsos</button>}
               {!cancelled && !!reservation?.room_assignments.length && stayBalance > 0 &&
@@ -225,6 +233,30 @@ export function FolioSheet({
               </button>}
             </div>
           </div>
+          {showRate && reservation && <form className="form-stack folio-form" onSubmit={(event) => {
+            event.preventDefault();
+            const values = new FormData(event.currentTarget);
+            void save("/lodging-rate", () => ({
+              start: values.get("start"), end: values.get("end"),
+              nightly_cents: cents(String(values.get("rate"))), expected_rates: reservation.night_rates,
+              expected_base: reservation.nightly_cents,
+            }), closePayment, "PATCH");
+          }}>
+            <h3>Ajustar tarifa de hospedaje</h3>
+            <p>El último día del rango queda fuera del ajuste. Los abonos se conservan. En cuentas individuales, la tarifa total se reparte entre las hojas originales.</p>
+            <div className="form-grid">
+              <label>Desde la noche del<input type="date" name="start" min={folio.check_in} max={addDays(folio.check_out, -1)}
+                defaultValue={reservation.moves.at(-1)?.day ?? folio.check_in} required /></label>
+              <label>Hasta el día (excluido)<input type="date" name="end" min={addDays(folio.check_in, 1)}
+                max={folio.check_out} defaultValue={folio.check_out} required /></label>
+              <label>Tarifa total por noche (Bs)<input name="rate" inputMode="decimal"
+                pattern="[0-9]{1,7}([.,][0-9]{1,2})?" required /></label>
+            </div>
+            <div className="modal-actions">
+              <button type="button" className="button secondary" disabled={busy} onClick={closePayment}>Cancelar</button>
+              <button className="button primary" disabled={busy}>Guardar tarifa</button>
+            </div>
+          </form>}
           {refunding && <form key={refunding.payment.id} className="form-stack folio-form" onSubmit={submitRefund}>
             <h3>Registrar reembolso</h3>
             <p>Disponible {money(refunding.payment.retained_cents)} · {refunding.payment.method}</p>

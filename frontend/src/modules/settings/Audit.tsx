@@ -17,7 +17,8 @@ type Event = {
 
 const actions: Record<string, string> = {
   create: "Creación", update: "Edición", check_in: "Llegada", check_out: "Salida",
-  cancel: "Cancelación", extend: "Extensión", void: "Anulación",
+  cancel: "Cancelación", extend: "Extensión", add_guest: "Huésped incorporado",
+  move_room: "Cambio de habitación", lodging_rate: "Ajuste de tarifa", void: "Anulación",
   replace: "Corrección de abono", create_stay_payment: "Cobro de estadía", refund: "Reembolso", delete: "Retiro",
 };
 const entities: Record<string, string> = {
@@ -29,7 +30,8 @@ const fields: Record<string, string> = {
   id: "ID", check_in: "Entrada", check_out: "Salida", guest_name: "Titular", pax: "PAX",
   status: "Estado", units: "Habitación y camas", unit_id: "Unidad", room_id: "ID habitación",
   room_name: "Habitación", label: "Unidad", nightly_cents: "Tarifa por noche", night_rates: "Tarifas por fecha",
-  guests: "Huéspedes", folios: "Hojas", name: "Nombre", title: "Titular de la hoja",
+  guests: "Huéspedes", added_guests: "Huéspedes incorporados", joined_on: "Fecha de incorporación", folios: "Hojas", name: "Nombre", title: "Titular de la hoja",
+  moves: "Traslados",
   created_at: "Registro", checked_in_at: "Llegada registrada", platform_id: "Canal",
   folio_mode: "Modalidad", folio_holder: "Encargado de la cuenta", comments: "Observaciones",
   breakfast: "Desayuno", arrival_time: "Hora prevista de llegada",

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import type { Data, Room, User } from "../../lib/types";
-import { api, today } from "../../lib/api";
+import { addDays, api, today } from "../../lib/api";
+import { occupiedUnits } from "../../lib/lodging";
 import { ErrorBox, Icon, Empty, Modal } from "../../components/UI";
 export function Rooms({
   data,
@@ -70,15 +71,14 @@ export function Rooms({
         <ErrorBox message={error} />
         <div className="room-cards">
           {data.rooms.map((room) => {
+            const day = today();
+            const roomUnits = new Set(room.units.map((unit) => unit.id));
             const assigned = data.reservations.filter(
-              (r) =>
-                r.status !== "cancelled" &&
-                r.check_in <= today() &&
-                r.check_out > today() &&
-                r.unit_ids.some((id) => room.units.some((u) => u.id === id)),
+              (r) => occupiedUnits(r, day, addDays(day, 1)).some((id) => roomUnits.has(id)),
             );
-            const pax = assigned.reduce((sum, r) => sum + r.pax, 0),
-              blocked = new Set(assigned.flatMap((r) => r.unit_ids));
+            const pax = assigned.reduce((sum, r) => sum + (r.room_assignments.find((place) => place.room_id === room.id)?.pax ?? r.pax) +
+              r.added_guests.filter((guest) => guest.joined_on <= day && roomUnits.has(guest.unit_id)).length, 0),
+              blocked = new Set(assigned.flatMap((r) => occupiedUnits(r, day, addDays(day, 1))));
             const free = room.units
               .filter((u) => u.active && !blocked.has(u.id))
               .reduce((sum, u) => sum + u.capacity, 0);

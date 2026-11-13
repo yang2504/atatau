@@ -12,6 +12,7 @@ import { popModule } from "./modules/pop.js";
 import { bcbRateHandler } from "./modules/bcb.js";
 import { audit, integer } from "./core/validation.js";
 import { transaction } from "./core/database.js";
+import { scanDocument } from "./modules/scanner.js";
 
 export function createApp(db) {
   const app = express();
@@ -44,7 +45,13 @@ export function createApp(db) {
     }
     next();
   });
-  app.use(express.json({ limit: "32kb" }));
+  const json = express.json({ limit: "32kb" });
+  const photoJson = express.json({ limit: "280kb" });
+  app.use((req, res, next) => {
+    const product = (req.method === "POST" && /^\/api\/(pub|pop)\/?$/.test(req.path)) ||
+      (req.method === "PATCH" && /^\/api\/(pub|pop)\/\d+\/?$/.test(req.path));
+    (product ? photoJson : json)(req, res, next);
+  });
   app.use("/api", (req, res, next) => {
     if (
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
@@ -57,6 +64,7 @@ export function createApp(db) {
   const users = userModule(db);
   app.use("/api/auth", users.router);
   app.use("/api", users.requireUser);
+  app.post("/api/scanner/document", scanDocument);
   app.get("/api/bcb/usd", bcbRateHandler(db));
   const getRate = db.prepare("SELECT scaled_rate FROM lodging_exchange_rate WHERE id=1");
   app.get("/api/lodging-exchange-rate", (req, res) => res.json(getRate.get() ?? { scaled_rate: null }));

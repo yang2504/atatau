@@ -18,6 +18,7 @@ export function* nightDates(start, end) {
 }
 
 export function paidNights(db, reservationId, nightlyCents, overrides) {
+  const extras = db.prepare("SELECT joined_on,nightly_cents FROM guests WHERE reservation_id=? AND joined_on IS NOT NULL").all(reservationId);
   return db
     .prepare(
       `SELECT p.lodging_day AS day, SUM(p.retained_cents) AS total FROM folio_payment_balances p
@@ -26,6 +27,7 @@ export function paidNights(db, reservationId, nightlyCents, overrides) {
      GROUP BY p.lodging_day`,
     )
     .all(reservationId)
-    .filter((row) => row.total === (overrides[row.day] ?? nightlyCents))
+    .filter((row) => row.total === ((overrides[row.day] ?? nightlyCents) ?? 0) +
+      extras.reduce((sum, guest) => sum + (guest.joined_on <= row.day ? guest.nightly_cents : 0), 0))
     .map((row) => row.day);
 }

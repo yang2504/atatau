@@ -10,10 +10,12 @@ import {
 } from "./lib/api";
 import type { Data, Draft, Folio, Reservation, User } from "./lib/types";
 import { nameMatches, reservationMatches } from "./lib/guestSearch";
+import { occupiedUnits } from "./lib/lodging";
 import { ErrorBox, Icon, Empty, Modal } from "./components/UI";
 import { Calendar } from "./modules/calendar/Calendar";
 import { ReservationForm } from "./modules/reservations/ReservationForm";
 import { ExtendStay } from "./modules/reservations/ExtendStay";
+import { canMoveStay, MoveStay } from "./modules/reservations/MoveStay";
 import { DollarRate } from "./components/DollarRate";
 import { Rooms } from "./modules/rooms/Rooms";
 import { Notes } from "./modules/notes/Notes";
@@ -193,6 +195,7 @@ export default function App() {
   const [folioReservation, setFolioReservation] = useState<Reservation | null>(null);
   const [summary, setSummary] = useState<"pax" | "free" | "arrivals" | "departures" | null>(null);
   const [extending, setExtending] = useState<Reservation | null>(null);
+  const [moving, setMoving] = useState<{ reservation: Reservation; extend: boolean } | null>(null);
   const [editor, setEditor] = useState<{
     reservation?: Reservation;
     draft?: Draft;
@@ -248,7 +251,11 @@ export default function App() {
     else setFolioReservation(reservation);
   }
   async function move(r: Reservation, unit: number, date: string) {
-    if (r.room_assignments.length) {
+    if (r.status === "in_house" && canMoveStay(r)) {
+      setMoving({ reservation: r, extend: false });
+      return;
+    }
+    if (r.room_assignments.length || r.added_guests.length || r.moves.length) {
       setEditor({ reservation: r });
       return;
     }
@@ -286,6 +293,7 @@ export default function App() {
       setFolioReservation(null);
       setSummary(null);
       setExtending(null);
+      setMoving(null);
       setQuery("");
     } catch (e) {
       setError((e as Error).message);
@@ -311,13 +319,13 @@ export default function App() {
       (r) => r.status !== "cancelled" && r.check_in <= day && r.check_out > day,
     );
   const units = data.rooms.filter((r) => r.active).flatMap((r) => r.units.filter((unit) => unit.active)),
-    occupied = new Set(active.flatMap((r) => r.unit_ids));
+    occupied = new Set(active.flatMap((r) => occupiedUnits(r, day, addDays(day, 1))));
   const capacity = data.rooms
     .filter((r) => r.active)
     .reduce((sum, r) => sum + r.capacity, 0);
   const freeUnits = units.filter((u) => !occupied.has(u.id));
   const free = freeUnits.reduce((sum, u) => sum + u.capacity, 0);
-  const pax = active.reduce((sum, r) => sum + r.pax, 0),
+  const pax = active.reduce((sum, r) => sum + r.pax + r.added_guests.filter((guest) => guest.joined_on <= day).length, 0),
     pending = data.notes.filter((n) => !n.resolved);
   const arrivals = data.reservations.filter(
     (r) => r.check_in === day && (r.status === "pending" || r.status === "confirmed"),
@@ -577,7 +585,7 @@ export default function App() {
           {page === "shifts" && user.role !== "receptionist" && <Shifts />}
           {page === "audit" && user.role !== "receptionist" && <Audit />}
           {page === "breakfast" && <Breakfast reservations={data.reservations} />}
-          {page === "pop" && <Pop user={user} />}
+          {page === "pop" && <Pop user={user} data={data} onSaved={onSaved} />}
           {page === "settings" && user.role !== "receptionist" && (
             <Settings data={data} user={user} onSaved={onSaved} onUserChanged={setUser} />
           )}
@@ -641,7 +649,7 @@ export default function App() {
                             {data.rooms
                               .filter((room) =>
                                 room.units.some((u) =>
-                                  r.unit_ids.includes(u.id),
+                                  r.occupancy.some((span) => span.unit_id === u.id),
                                 ),
                               )
                               .map((room) => (
@@ -652,7 +660,7 @@ export default function App() {
                                     {room.type === "dorm"
                                       ? room.units
                                           .filter((u) =>
-                                            r.unit_ids.includes(u.id),
+                                            r.occupancy.some((span) => span.unit_id === u.id),
                                           )
                                           .map((u) => u.label)
                                           .join(", ")
@@ -661,7 +669,7 @@ export default function App() {
                                 </div>
                               ))}
                           </td>
-                          <td>{r.pax}<small className="cell-sub">{r.breakfast ? "Con desayuno" : "Sin desayuno"}</small></td>
+                          <td>{r.pax + r.added_guests.length}<small className="cell-sub">{r.breakfast ? "Con desayuno" : "Sin desayuno"}</small></td>
                           <td>{r.platform_name}</td>
                           <td>
                             <span className={`tag ${r.status}`}>
@@ -709,7 +717,9 @@ export default function App() {
           <div className="agenda-list summary-reservations">
             {summaryReservations.map((reservation) => {
               const places = data.rooms.flatMap((room) => {
-                const units = room.units.filter((unit) => reservation.unit_ids.includes(unit.id));
+                const relevantDay = day === reservation.check_out ? addDays(day, -1) : day;
+                const assigned = occupiedUnits(reservation, relevantDay, addDays(relevantDay, 1));
+                const units = room.units.filter((unit) => assigned.includes(unit.id));
                 return units.length ? [room.type === "dorm"
                   ? `${room.name} (${units.map((unit) => unit.label).join(", ")})` : room.name] : [];
               });
@@ -719,7 +729,7 @@ export default function App() {
               }}>
                 <span className="summary-guest">
                   <strong>{reservation.guest_name} · #{reservation.id}</strong>
-                  <small>{[...places, `${reservation.pax} PAX`].join(" · ")}</small>
+                  <small>{[...places, `${reservation.pax + reservation.added_guests.filter((guest) => guest.joined_on <= day).length} PAX`].join(" · ")}</small>
                   <small>{shortDate(reservation.check_in)} → {shortDate(reservation.check_out)}
                     {summary === "arrivals" && reservation.arrival_time && ` · Llegada prevista ${reservation.arrival_time}`}</small>
                   {reservation.guests.length > 1 && <small>
@@ -764,15 +774,26 @@ export default function App() {
           onOpenFolio={editor.reservation && data.folios.some((folio) => folio.reservation_id === editor.reservation?.id)
             ? openReservationFolios : undefined}
           onClose={() => setEditor(null)}
+          onMove={editor.reservation && canMoveStay(editor.reservation) ? (reservation) => {
+            setEditor(null);
+            setMoving({ reservation, extend: reservation.check_out === today() });
+          } : undefined}
           onSaved={onSaved}
         />
       )}
       {extending && <ExtendStay
         reservation={extending}
-        rooms={data.rooms.filter((room) => room.units.some((unit) => extending.unit_ids.includes(unit.id)))}
+        rooms={data.rooms.filter((room) => room.units.some((unit) => (extending.moves.length
+          ? extending.moves.filter((move) => move.day === extending.moves.at(-1)?.day).map((move) => move.unit_id)
+          : extending.unit_ids).includes(unit.id)))}
+        onMove={canMoveStay(extending) ? () => {
+          setExtending(null);
+          setMoving({ reservation: extending, extend: true });
+        } : undefined}
         onClose={() => setExtending(null)}
         onSaved={onSaved}
       />}
+      {moving && <MoveStay {...moving} data={data} onSaved={onSaved} onClose={() => setMoving(null)} />}
     </div>
   );
 }

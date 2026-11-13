@@ -2,7 +2,6 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { Router } from "express";
 import { fail, text, choice, integer, audit } from "../core/validation.js";
 import { transaction } from "../core/database.js";
-import { turnFor } from "./shifts.js";
 
 export const canSeeSuperadmin = (user) => Number(user?.role === "superadmin");
 
@@ -138,7 +137,6 @@ export function userModule(db) {
     req.user = current(req);
     if (!req.user)
       return res.status(401).json({ error: "Inicia sesión para continuar." });
-    req.user.turnId = turnFor(db, req.user);
     next();
   }
   function admin(req, res, next) {

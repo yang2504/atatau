@@ -15,6 +15,7 @@ export function reservationMatches(query: string, reservation: Reservation) {
     query,
     reservation.guest_name,
     ...reservation.guests.map((guest) => guest.name),
+    ...reservation.added_guests.map((guest) => guest.name),
   );
 }
 

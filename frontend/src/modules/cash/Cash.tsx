@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { ErrorBox, Icon } from "../../components/UI";
+import { ErrorBox, Icon, Modal } from "../../components/UI";
 import { CardCharge } from "../../components/CardCharge";
 import { api, localDateTime, shortDate, today } from "../../lib/api";
 import { cents, money, paymentMethods } from "../../lib/money";
@@ -19,7 +19,12 @@ type Entry = {
   voided: number;
   recorded_at: string | null;
 };
-type Turn = { id: number; started_at: string; expires_at: string; ended_at: string | null; author: string };
+type Turn = {
+  id: number | null; started_at: string | null; expires_at: string | null; ended_at: string | null;
+  author: string; window_key: string | null; refresh_at?: string | null;
+};
+type HistoricalTurn = Turn & { id: number; started_at: string; expires_at: string };
+const outsideSchedule = (turn: Turn) => /^(outside|extra):/.test(turn.window_key ?? "");
 const sources = { manual: "Manual", folio: "Hoja de consumo", stay: "Cobro de estadía", pop: "Venta Pub", refund: "Reembolso" };
 const transferMethods = paymentMethods.filter((method) => method !== "Efectivo");
 
@@ -30,19 +35,19 @@ export function Cash({ user }: { user: User }) {
   const [view, setView] = useState("current");
   const [movementFilter, setMovementFilter] = useState<"all" | Entry["kind"]>("all");
   const [month, setMonth] = useState(today().slice(0, 7));
-  const [kind, setKind] = useState("income");
-  const movementKind = box === "pub" ? "expense" : kind;
-  const showForm = view === "current" && (box === "petty" || admin);
+  const [movementKind, setMovementKind] = useState<Entry["kind"] | null>(null);
+  const [voiding, setVoiding] = useState<Entry | null>(null);
+  const [notice, setNotice] = useState("");
   const [account, setAccount] = useState<"cash" | "transfer">("cash");
   const [transferMethod, setTransferMethod] = useState("QR");
-  const method = account === "cash" ? "Efectivo" : transferMethod;
+  const method = transferMethod;
   const [amount, setAmount] = useState("");
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [version, setVersion] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [turn, setTurn] = useState<Turn | null>(null);
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [turns, setTurns] = useState<HistoricalTurn[]>([]);
   const [turnId, setTurnId] = useState("");
   const [hasOlder, setHasOlder] = useState(false);
   const [loadingTurns, setLoadingTurns] = useState(false);
@@ -50,7 +55,7 @@ export function Cash({ user }: { user: User }) {
     setError("");
     setLoadingTurns(true);
     try {
-      const page = await api<Turn[]>(`/cash/turns${before ? `?before=${before}` : ""}`);
+      const page = await api<HistoricalTurn[]>(`/cash/turns${before ? `?before=${before}` : ""}`);
       setTurns((current) => before ? [...current, ...page] : page);
       setHasOlder(page.length === 50);
       if (!before) setTurnId(page[0] ? String(page[0].id) : "");
@@ -64,6 +69,13 @@ export function Cash({ user }: { user: User }) {
     setError("");
     setView(next);
     if (next === "history") void loadTurns();
+  }
+  function openMovement(kind: Entry["kind"]) {
+    setError("");
+    setNotice("");
+    setAmount("");
+    setTransferMethod(account === "cash" ? "Efectivo" : "QR");
+    setMovementKind(kind);
   }
   const byTurn = view === "current" || view === "history";
   const path = view === "monthly" ? `/cash/monthly?month=${month}&box=${box}`
@@ -87,9 +99,9 @@ export function Cash({ user }: { user: User }) {
     return () => { active = false; };
   }, [path, version]);
   useEffect(() => {
-    if (view !== "current" || !turn) return;
+    if (view !== "current" || !turn?.refresh_at) return;
     const timer = window.setTimeout(() => setVersion((value) => value + 1),
-      Math.max(1000, Date.parse(turn.expires_at) - Date.now() + 100));
+      Math.max(1000, Date.parse(turn.refresh_at) - Date.now() + 100));
     return () => window.clearTimeout(timer);
   }, [view, turn]);
   const base = /^\d{1,7}([.,]\d{1,2})?$/.test(amount) ? cents(amount) : 0;
@@ -125,6 +137,10 @@ export function Cash({ user }: { user: User }) {
       await api("/cash", { day: values.get("day") ?? today(), detail: values.get("detail"), kind: movementKind, method, base_cents: cents(amount), cash_box: box });
       form.reset();
       setAmount("");
+      setAccount(method === "Efectivo" ? "cash" : "transfer");
+      setMovementFilter(movementKind ?? "all");
+      setMovementKind(null);
+      setNotice(movementKind === "expense" ? "Egreso registrado." : "Ingreso registrado.");
       setVersion((v) => v + 1);
     } catch (error) {
       setError((error as Error).message);
@@ -134,11 +150,12 @@ export function Cash({ user }: { user: User }) {
   }
 
   async function voidEntry(id: number) {
-    if (!window.confirm("¿Anular este movimiento manual? Se conservará en el historial.")) return;
     setBusy(true);
     setError("");
     try {
       await api(`/cash/${id}/void`, {});
+      setVoiding(null);
+      setNotice("Movimiento anulado.");
       setVersion((v) => v + 1);
     } catch (error) {
       setError((error as Error).message);
@@ -147,7 +164,7 @@ export function Cash({ user }: { user: User }) {
     }
   }
 
-  return <div className="form-stack">
+  return <div className="form-stack cash-workspace">
     <div className="tabs" aria-label="Elegir caja" role="group">
       <button className={box === "petty" ? "active" : ""} aria-pressed={box === "petty"} onClick={() => switchBox("petty")} disabled={busy}>Caja Chica</button>
       <button className={box === "pub" ? "active" : ""} aria-pressed={box === "pub"} onClick={() => switchBox("pub")} disabled={busy}>Caja Pub</button>
@@ -160,29 +177,37 @@ export function Cash({ user }: { user: User }) {
         <button className={view === "monthly" ? "active" : ""} aria-pressed={view === "monthly"} onClick={() => switchView("monthly")}>Cuaderno mensual</button>
       </>}
     </div>
-    <ErrorBox message={error} />
-    <div className={showForm ? "content-columns operations-layout" : undefined}>
+    {!movementKind && !voiding && <ErrorBox message={error} />}
+    {notice && <p className="group-booking-summary" role="status">{notice}</p>}
+    <div>
       <section className="panel">
         <div className="section-toolbar">
           <div>
-            <h2>{boxLabel} · {byTurn ? (turn ? `Turno #${turn.id}` : "Turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
-            <p className="muted">{box === "pub" ? "Las ventas se registran desde Inventario Pub." : "Los abonos de huéspedes llegan desde Hojas de consumo."}</p>
+            <h2>{boxLabel} · {byTurn ? (turn?.id ? `Turno #${turn.id}` : view === "current" ? "Mi turno" : "Historial de turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
+            <p className="muted">{box === "pub" ? "Ventas del Pub y abonos de sus consumos a cuenta." : "Hospedaje, servicios e ingresos de recepción."}</p>
           </div>
+          {view === "current" && turn?.started_at && <div className="row-actions">
+            {box === "petty" && <button className="button primary" onClick={() => openMovement("income")}><Icon name="plus" size={16} /> Registrar ingreso</button>}
+            {admin && <button className="button secondary" onClick={() => openMovement("expense")}>Registrar egreso</button>}
+          </div>}
           {view === "monthly" && <input type="month" aria-label="Mes del cuaderno" value={month} onChange={(e) => { if (e.target.value) setMonth(e.target.value); }} />}
         </div>
         {view === "history" && <div className="row-actions turn-meta">
           <label>Turno<select aria-label="Turno" value={turnId} onChange={(e) => { setError(""); setTurnId(e.target.value); }} disabled={loadingTurns}>
             {!turns.length && <option value="">Sin turnos para mostrar</option>}
             {turns.map((item) => <option value={item.id} key={item.id}>
-              #{item.id} · {item.author} · {localDateTime(item.started_at)}
+              #{item.id} · {item.author} · {item.started_at && localDateTime(item.started_at)}{outsideSchedule(item) ? " · Fuera de horario" : ""}
             </option>)}
           </select></label>
           {hasOlder && <button className="button secondary" disabled={loadingTurns}
             onClick={() => void loadTurns(turns.at(-1)?.id)}>Ver turnos anteriores</button>}
         </div>}
-        {turn && <p className="muted turn-meta">
-          {turn.author} · Apertura {localDateTime(turn.started_at)} · {turn.ended_at ? `Cierre ${localDateTime(turn.ended_at)}` : `Turno abierto hasta ${localDateTime(turn.expires_at)}`}
+        {turn?.started_at && turn.expires_at && <p className="muted turn-meta">
+          {turn.author} · {outsideSchedule(turn) ? "Fuera de horario · " : ""}
+          {localDateTime(turn.started_at)} → {localDateTime(turn.ended_at ?? turn.expires_at)}
+          {turn.id === null ? " · Aún sin movimientos" : turn.ended_at ? " · Cerrado" : ""}
         </p>}
+        {view === "current" && turn && !turn.started_at && <p className="muted turn-meta">El turno de este horario ya cerró. Revisa el horario en Turnos.</p>}
         <div className="tabs ledger-tabs" role="group" aria-label="Cuenta por medio de pago">
           <button className={account === "cash" ? "active" : ""} aria-pressed={account === "cash"}
             onClick={() => setAccount("cash")} disabled={busy}>Efectivo</button>
@@ -193,7 +218,10 @@ export function Cash({ user }: { user: User }) {
           <h3>{account === "cash" ? "Efectivo en caja" : "Transferencia"}</h3>
           <div className="ledger-totals">
             <span>Ingresos <strong>{total(income)}</strong></span>
-            <span className="ledger-expenses">Egresos <strong>{total(expenses)}</strong></span>
+            <button type="button" className="ledger-expenses cash-expense-link" aria-pressed={movementFilter === "expense"}
+              onClick={() => setMovementFilter(movementFilter === "expense" ? "all" : "expense")}>
+              Egresos <strong>{total(expenses)}</strong>
+            </button>
             <span className="ledger-net">Neto del período <strong>{total(income - expenses)}</strong></span>
           </div>
           {account === "cash" && byTurn && <p className="muted">Saldo inicial del turno · {money(0)}</p>}
@@ -207,6 +235,10 @@ export function Cash({ user }: { user: User }) {
             <button key={value} className={movementFilter === value ? "active" : ""}
               aria-pressed={movementFilter === value} onClick={() => setMovementFilter(value)}>{label}</button>)}
         </div>
+        {movementFilter === "expense" && <div className="cash-expense-heading">
+          <h3>Egresos del período</h3>
+          <span>{accountEntries?.filter((row) => row.kind === "expense" && !row.voided).length ?? 0} vigentes · {total(expenses)}</span>
+        </div>}
         {!entries && !error && <p className="quiet-state" role="status">Cargando movimientos…</p>}
         {visibleEntries?.length === 0 && <p className="quiet-state">{accountEntries?.length ? "No hay movimientos de este tipo." : "Aún no hay movimientos en esta cuenta."}</p>}
         {!!visibleEntries?.length && <div className="table-scroll">
@@ -224,27 +256,41 @@ export function Cash({ user }: { user: User }) {
                   {row.method === "Tarjeta" ? "Comisión descontada" : "Recargo histórico"} {money(row.surcharge_cents)}
                 </small>}
               </td>
-              {admin && <td>{row.source === "manual" && !row.voided && <button className="text-button" disabled={busy} onClick={() => void voidEntry(row.id)}>Anular</button>}</td>}
+              {admin && <td>{row.source === "manual" && !row.voided && <button className="text-button" disabled={busy}
+                onClick={() => { setError(""); setVoiding(row); }}>Anular</button>}</td>}
             </tr>)}</tbody>
           </table>
         </div>}
       </section>
-      {showForm && <section className="panel side-form">
-        <h2>{box === "pub" ? "Registrar egreso" : admin ? "Nuevo movimiento" : "Registrar ingreso"} · {boxLabel}</h2>
+      {movementKind && <Modal title={`${movementKind === "expense" ? "Registrar egreso" : "Registrar ingreso"} · ${boxLabel}`}
+        className="cash-dialog" onClose={() => { if (!busy) { setError(""); setMovementKind(null); } }}>
+        <ErrorBox message={error} />
         <form className="form-stack" onSubmit={record}>
           {admin && <label>Fecha<input type="date" name="day" defaultValue={today()} required /></label>}
-          {admin && box === "petty" && <label>Tipo<select value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="income">Ingreso</option><option value="expense">Egreso</option>
-          </select></label>}
           <label>Concepto<input name="detail" placeholder="Ej. Compra de insumos" maxLength={160} required /></label>
           <label>Importe base (Bs)<input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" pattern="[0-9]{1,7}([.,][0-9]{1,2})?" required /></label>
           <label>Medio de pago<select value={method} onChange={(e) => setTransferMethod(e.target.value)}>
-            {(account === "cash" ? ["Efectivo"] : transferMethods).map((item) => <option key={item}>{item}</option>)}
+            {paymentMethods.map((item) => <option key={item}>{item}</option>)}
           </select></label>
           {movementKind === "income" && method === "Tarjeta" && <CardCharge base={base} />}
-          <button className="button primary" disabled={busy}><Icon name="plus" size={16} /> Registrar</button>
+          <div className="modal-actions">
+            <button className="button secondary" type="button" disabled={busy} onClick={() => { setError(""); setMovementKind(null); }}>Cancelar</button>
+            <button className="button primary" disabled={busy || !base}>{movementKind === "expense" ? "Guardar egreso" : "Guardar ingreso"}</button>
+          </div>
         </form>
-      </section>}
+      </Modal>}
+      {voiding && <Modal title="Anular movimiento" className="cash-dialog"
+        onClose={() => { if (!busy) { setVoiding(null); setError(""); } }}>
+        <div className="form-stack">
+          <ErrorBox message={error} />
+          <p><strong>{voiding.detail}</strong> · {money(voiding.base_cents)}</p>
+          <p className="muted">El movimiento quedará visible como anulado en el historial.</p>
+          <div className="modal-actions">
+            <button className="button secondary" disabled={busy} onClick={() => { setVoiding(null); setError(""); }}>Cancelar</button>
+            <button className="button primary" disabled={busy} onClick={() => void voidEntry(voiding.id)}>Confirmar anulación</button>
+          </div>
+        </div>
+      </Modal>}
     </div>
   </div>;
 }

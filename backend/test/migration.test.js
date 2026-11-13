@@ -35,7 +35,8 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
     }
     const db = openDatabase(path);
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 13);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 16);
+      assert.equal(db.prepare("SELECT joined_on FROM guests WHERE id=1").get().joined_on, null);
       assert.equal(db.prepare("SELECT COUNT(*) AS n FROM reservation_night_rates").get().n, 0);
       assert.equal(db.prepare("SELECT folio_holder FROM reservations WHERE id=1").get().folio_holder, "");
       assert.equal(db.prepare("SELECT active FROM units WHERE id=1").get().active, 1);
@@ -91,7 +92,7 @@ test("la migración 003 completa ambas variantes instaladas de la versión 002",
         }
         const db = openDatabase(path);
         try {
-          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 13);
+          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 16);
           const product = db.prepare("SELECT stock,category_id FROM pop_products WHERE name='Producto histórico'").get();
           assert.equal(product.stock, 3);
           assert.equal(product.category_id, null);

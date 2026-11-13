@@ -1,14 +1,16 @@
 import { useState, type FormEvent } from "react";
 import { UsdConversion } from "../../components/UsdConversion";
 import type { Data, Draft, Reservation, RoomAssignment } from "../../lib/types";
-import { api, today, addDays, daysBetween, statusNames } from "../../lib/api";
+import { api, today, addDays, daysBetween, shortDate, statusNames } from "../../lib/api";
 import { Modal, ErrorBox, Icon } from "../../components/UI";
 import { StayDates } from "./StayDates";
 import { ReservationStaff } from "./ReservationStaff";
 import { cents, money, paymentMethods } from "../../lib/money";
 import { CardCharge } from "../../components/CardCharge";
-import { lodgingTotal, normalRoomRate } from "../../lib/lodging";
+import { lodgingTotal, normalRoomRate, occupiedUnits } from "../../lib/lodging";
 import { GroupRooms } from "./GroupRooms";
+import { AddGuest } from "./AddGuest";
+import { DocumentScanner } from "./DocumentScanner";
 
 export function ReservationForm({
   data,
@@ -17,6 +19,7 @@ export function ReservationForm({
   onClose,
   onSaved,
   onOpenFolio,
+  onMove,
 }: {
   data: Data;
   reservation?: Reservation;
@@ -24,8 +27,10 @@ export function ReservationForm({
   onClose: () => void;
   onSaved: () => Promise<void>;
   onOpenFolio?: (reservation: Reservation) => void;
+  onMove?: (reservation: Reservation) => void;
 }) {
   const r = reservation;
+  const [addingGuest, setAddingGuest] = useState(false);
   const [group, setGroup] = useState(!!r?.room_assignments.length);
   const [assignments, setAssignments] = useState<RoomAssignment[]>(r?.room_assignments ?? []);
   const initialUnit = r?.unit_ids[0] ?? draft?.unit_id;
@@ -92,12 +97,9 @@ export function ReservationForm({
     data.reservations
       .filter(
         (other) =>
-          other.id !== r?.id &&
-          other.status !== "cancelled" &&
-          other.check_in < end &&
-          other.check_out > start,
+          other.id !== r?.id,
       )
-      .flatMap((other) => other.unit_ids),
+      .flatMap((other) => occupiedUnits(other, start, end)),
   );
   const groupReady = assignments.length >= 2 && (!r || groupPax === r.pax) && assignments.every((item) => {
     const room = data.rooms.find((room) => room.id === item.room_id);
@@ -188,9 +190,12 @@ export function ReservationForm({
     }
   }
   return (
-    <Modal title={r ? `Reserva${group ? " de grupo" : ""} #${r.id}` : "Nueva reserva"}
+    <Modal title={addingGuest ? "Ampliar huéspedes" : r ? `Reserva${group ? " de grupo" : ""} #${r.id}` : "Nueva reserva"}
       className={group ? "group-reservation-dialog" : undefined} onClose={onClose}>
-      <form onSubmit={submit} className="form-stack">
+      {addingGuest && r ? <AddGuest reservation={r} data={data} onSaved={async () => {
+        await onSaved();
+        onClose();
+      }} onClose={() => setAddingGuest(false)} /> : <form onSubmit={submit} className="form-stack">
         <ErrorBox message={error} />
         {saved ? <div className="modal-actions">
           <button className="button primary" disabled={busy}>Actualizar vista</button>
@@ -211,6 +216,7 @@ export function ReservationForm({
           />
         </label>
         {group && <p className="group-common-dates">Estas fechas se aplican a todos los cuartos del grupo.</p>}
+        <DocumentScanner />
         <StayDates
           start={start}
           end={end}
@@ -248,6 +254,7 @@ export function ReservationForm({
                 const next = data.rooms.find((r) => r.id === id)!;
                 setUnits(next.type === "private" ? [next.units[0].id] : []);
               }}
+              disabled={!!r?.moves.length || !!onMove && r?.status === "in_house"}
               required
             >
               <option value={0} disabled>
@@ -291,6 +298,7 @@ export function ReservationForm({
                   <input
                     type="checkbox"
                     checked={units.includes(unit.id)}
+                    disabled={!!r?.moves.length || !!onMove && r?.status === "in_house"}
                     onChange={(e) =>
                       setUnits(
                         e.target.checked
@@ -368,6 +376,26 @@ export function ReservationForm({
         </p>}
         {r && <>
           <ReservationStaff reservation={r} />
+          {onMove && <div className="row-actions"><button type="button" className="button secondary compact" disabled={busy}
+            onClick={() => onMove(r)}>{r.check_out === today() ? "Alargar en otra habitación" : "Cambiar de habitación"}</button></div>}
+          {!!r.moves.length && <div className="group-booking-summary">
+            <h3>Traslados registrados</h3>
+            {[...new Set(r.moves.map((move) => move.day))].map((day) => <p key={day}>{shortDate(day)} · {data.rooms
+              .find((room) => room.units.some((unit) => unit.id === r.moves.find((move) => move.day === day)?.unit_id))?.name}</p>)}
+          </div>}
+          {!r.moves.length && (canArrive || r.status === "in_house") && r.check_out > today() &&
+            <div className="row-actions">
+              <button type="button" className="button secondary compact" disabled={busy}
+                onClick={() => setAddingGuest(true)}><Icon name="users" size={16} /> Ampliar huéspedes</button>
+            </div>}
+          {!!r.added_guests.length && <div className="group-booking-summary">
+            <h3>Huéspedes incorporados</h3>
+            <ul>{r.added_guests.map((guest) => {
+              const room = data.rooms.find((item) => item.units.some((unit) => unit.id === guest.unit_id));
+              const bed = room?.type === "dorm" ? room.units.find((unit) => unit.id === guest.unit_id)?.label : null;
+              return <li key={guest.id}>{guest.name} · desde {shortDate(guest.joined_on)} · {room?.name}{bed && ` · ${bed}`}</li>;
+            })}</ul>
+          </div>}
           {onOpenFolio && <div className="row-actions">
             <button type="button" className="button secondary compact" disabled={busy}
               onClick={() => onOpenFolio(r)}><Icon name="receipt" size={15} /> {group ? "Abrir hoja del grupo" : "Ver hojas de consumo"}</button>
@@ -434,8 +462,7 @@ export function ReservationForm({
         </label>}
         {r && (
           <p className="muted small">
-            PAX y tipo de cuenta quedan fijos para conservar las hojas creadas.
-            Para cambiar esos datos, cancela esta reserva y crea una nueva.
+            El PAX original y el tipo de cuenta se conservan. Usa Ampliar huéspedes para registrar una incorporación.
           </p>
         )}
         </>}
@@ -537,7 +564,7 @@ export function ReservationForm({
           </details>
         )}
         </>}
-      </form>
+      </form>}
     </Modal>
   );
 }

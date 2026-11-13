@@ -10,6 +10,7 @@ import {
 import { Icon, Empty } from "../../components/UI";
 import { reservationStaff } from "../reservations/ReservationStaff";
 import { nameMatches } from "../../lib/guestSearch";
+import { occupiedUnits } from "../../lib/lodging";
 
 export function Calendar({
   data,
@@ -44,18 +45,14 @@ export function Calendar({
   const occupiedByDay = days.map(
     (day) =>
       new Set(
-        data.reservations
-          .filter(
-            (reservation) =>
-              reservation.status !== "cancelled" &&
-              reservation.check_in <= day &&
-              day < reservation.check_out,
-          )
-          .flatMap((reservation) => reservation.unit_ids),
+        data.reservations.flatMap((reservation) => occupiedUnits(reservation, day, addDays(day, 1))),
       ),
   );
   const rooms = data.rooms.filter(
-    (r) => r.active && (filter === "all" || r.type === filter) && nameMatches(roomQuery, r.name),
+    (r) => (r.active || data.reservations.some((reservation) => reservation.moves.length > 0 &&
+      reservation.occupancy.some((span) => span.starts_on < end && span.ends_on > start &&
+        r.units.some((unit) => unit.id === span.unit_id)))) &&
+      (filter === "all" || r.type === filter) && nameMatches(roomQuery, r.name),
   );
   const hasActiveRooms = data.rooms.some((room) => room.active);
   const title = new Intl.DateTimeFormat("es-BO", {
@@ -182,7 +179,7 @@ export function Calendar({
                     </div>
                     {days.map((day, index) => {
                       const free = room.units.filter(
-                        (unit) => unit.active && !occupiedByDay[index].has(unit.id),
+                        (unit) => room.active && unit.active && !occupiedByDay[index].has(unit.id),
                       ).length;
                       const label =
                         room.type === "private"
@@ -233,7 +230,7 @@ export function Calendar({
                             key={day}
                             style={{ gridColumn: index + 2, gridRow: 1 }}
                             className={`calendar-cell ${day === currentDay ? "is-today" : ""} ${selected ? "selected" : ""}`}
-                            disabled={!unit.active}
+                            disabled={!room.active || !unit.active}
                             tabIndex={occupiedByDay[index].has(unit.id) ? -1 : 0}
                             aria-label={`${room.name}, ${unit.label}, ${day}: seleccionar fecha`}
                             onPointerDown={(e) => {
@@ -277,25 +274,26 @@ export function Calendar({
                         );
                       })}
                       {data.reservations
-                        .filter(
-                          (r) =>
-                            r.status !== "cancelled" &&
-                            r.unit_ids.includes(unit.id) &&
-                            r.check_in < end &&
-                            r.check_out > start,
-                        )
-                        .map((r) => {
+                        .flatMap((r) => r.status === "cancelled" ? [] : r.occupancy
+                          .filter((span) => span.unit_id === unit.id && span.starts_on < end && span.ends_on > start)
+                          .filter((span, index, all) => all.findIndex((other) => other.starts_on <= span.starts_on &&
+                            other.ends_on >= span.ends_on) === index)
+                          .map((span) => ({ r, span })))
+                        .map(({ r, span }) => {
                           const left = Math.max(
                               0,
-                              daysBetween(start, r.check_in),
+                              daysBetween(start, span.starts_on),
                             ),
                             right = Math.min(
                               range,
-                              daysBetween(start, r.check_out),
+                              daysBetween(start, span.ends_on),
                             );
                           const visibleNights = days.slice(left, right);
                           const paymentStatus = (day: string) => {
-                            const rate = r.night_rates[day] ?? r.nightly_cents;
+                            const added = r.added_guests.filter((guest) => guest.joined_on <= day);
+                            const base = r.night_rates[day] ?? r.nightly_cents;
+                            const rate = base === null && !added.length ? null
+                              : (base ?? 0) + added.reduce((sum, guest) => sum + guest.nightly_cents, 0);
                             return rate === null
                               ? "Sin tarifa"
                               : rate === 0
@@ -304,10 +302,14 @@ export function Calendar({
                                   ? "Pagada"
                                   : "Con saldo";
                           };
-                          const extendable = unit.active && r.unit_ids[0] === unit.id && r.status !== "checked_out";
+                          const moved = r.moves.length > 0;
+                          const lastUnit = moved ? r.moves.find((move) => move.day === r.moves.at(-1)?.day)?.unit_id : r.unit_ids[0];
+                          const extendable = unit.active && lastUnit === unit.id && span.ends_on === r.check_out && r.status !== "checked_out";
                           const place = r.room_assignments.find((item) => item.room_id === room.id);
-                          const roomPax = place?.pax ?? r.pax;
-                          const canOpenFolio = (place?.unit_ids[0] ?? r.unit_ids[0]) === unit.id && hasFolio.has(r.id);
+                          const extra = r.unit_ids.includes(unit.id) ? undefined : r.added_guests.find((guest) => guest.unit_id === unit.id);
+                          const roomPax = (place?.pax ?? r.pax) +
+                            r.added_guests.filter((guest) => room.units.some((item) => item.id === guest.unit_id) && guest.joined_on < end).length;
+                          const canOpenFolio = (moved || !!extra || (place?.unit_ids[0] ?? r.unit_ids[0]) === unit.id) && hasFolio.has(r.id);
                           const staff = reservationStaff(r);
                           const responsible = staff[r.status === "checked_out" ? 2 : r.status === "in_house" ? 1 : 0];
                           const initials = responsible.name?.split(/\s+/).slice(0, 2)
@@ -329,9 +331,9 @@ export function Calendar({
                             )
                             .join(", ");
                           return (
-                            <Fragment key={r.id}>
+                            <Fragment key={`${r.id}-${span.starts_on}`}>
                             <button
-                              draggable={!!unit.active && !place}
+                              draggable={!!unit.active && !place && !r.added_guests.length && !moved}
                               className={`reservation-block ${r.status}${extendable || canOpenFolio ? " has-actions" : ""}${right - left === 1 ? " single-night" : ""}`}
                               style={{
                                 gridColumn: `${left + 2} / ${right + 2}`,
@@ -351,17 +353,18 @@ export function Calendar({
                                 );
                                 e.dataTransfer.effectAllowed = "move";
                               }}
-                              aria-label={`${r.guest_name} · ${statusNames[r.status]} · ${roomPax} PAX${place ? ` · Grupo #${r.id}` : ""}${staffDetail ? ` · ${staffDetail}` : ""}`}
+                              aria-label={`${extra?.name ?? r.guest_name} · ${statusNames[r.status]} · ${roomPax} PAX${place ? ` · Grupo #${r.id}` : ""}${staffDetail ? ` · ${staffDetail}` : ""}`}
                               title={`${r.guest_name} · ${statusNames[r.status]} · ${roomPax} PAX${place ? ` en ${room.name} · Grupo #${r.id} de ${r.pax} personas` : ""}\n${staffDetail}\n${visibleNights.map((day) => `${shortDate(day)}: ${paymentStatus(day)}`).join("\n")}`}
                             >
                               <span className="reservation-avatar">
                                 <Icon name={place || (room.type === "private" && roomPax > 1) ? "users" : "person"} size={15} />
                               </span>
                               <span>
-                                <strong>{r.guest_name}</strong>
+                                <strong>{extra?.name ?? r.guest_name}</strong>
                                 <small>
                                   {r.status === "pending" && <span className="reservation-pending-label">Pend. </span>}
-                                  {place && <span>Grupo · </span>}
+                                  {moved && <span>{span.ends_on === r.check_out ? "Traslado · " : "Anterior · "}</span>}
+                                  {extra ? <span>Incorporación · </span> : place && <span>Grupo · </span>}
                                   {initials ? <span className="reservation-initials">{responsible.code}·{initials}</span>
                                     : r.status !== "pending" && (room.type === "dorm" ? "1 cama" : `${roomPax} PAX`)}
                                 </small>

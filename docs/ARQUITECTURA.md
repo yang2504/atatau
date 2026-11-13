@@ -34,7 +34,7 @@ En desarrollo: frontend `127.0.0.1:5173` con proxy de `/api` hacia `127.0.0.1:30
 - `guest_rates`: sugerencias del talonario por habitación, PAX y desayuno.
 - `cash_entries`: ingresos y egresos manuales con anulación administrativa. La consulta de caja también incluye los abonos y ventas POP en su fecha de cobro.
 - `pop_categories`, `pop_products` y `pop_movements`: categorías opcionales, catálogo, stock y movimientos. Al eliminar una categoría, SQLite libera la asignación de sus productos. La venta guarda precio, cantidad y recargo antes de actualizar existencias.
-- `shift_schedules` guarda horarios semanales por usuario. `cash_turns` guarda instancias de esos horarios y tramos operativos fuera de horario. Los movimientos se vinculan a la instancia en curso.
+- `shift_schedules` guarda horarios semanales por usuario. `cash_turns` guarda instancias de esos horarios y un registro por persona y día para operaciones fuera de horario. La instancia se crea en la misma transacción que el primer movimiento.
 - `folio_refunds` y `folio_refund_allocations` guardan el egreso y su aplicación a los cobros originales. `folio_payment_balances` calcula el importe retenido para la hoja y la reserva.
 - `audit_log`: acción, registro, usuario y hora. Las operaciones de reservas, hojas y caja guardan valores anterior y nuevo dentro de su transacción. El visor administrativo protege la identidad del superadministrador según el rol.
 - `lodging_exchange_rate`: tipo de cambio de respaldo configurado por administración, en unidades de 0,0001 Bs por USD. La conversión prioriza el dato oficial del BCB vigente, aunque provenga del caché. El importe aplicado se guarda en centavos de boliviano.
@@ -48,6 +48,12 @@ El día de checkout queda libre para otra entrada. Una privada no se comparte en
 El alta y la edición de grupos envían `room_assignments` con `room_id`, `pax` y `unit_ids` por cuarto. La API valida el PAX total, el tipo de cuenta y las asignaciones y devuelve la distribución junto con `unit_ids`. El alta puede incluir `advance_payment`. Los abonos posteriores se registran con `POST /api/folios/:id/stay-payments`, usando el saldo esperado para detectar cambios simultáneos. Ambos usan los cobros de estadía existentes y generan un solo movimiento de Caja Chica por pago.
 
 ## Contratos API
+
+Los productos del Pub guardan una foto JPEG por producto en `pop_product_photos`. El catálogo devuelve su revisión y la imagen se sirve por `GET /api/pub/:id/photo`. En una venta a cuenta, el movimiento se vincula a un servicio de la hoja en la misma transacción que descuenta el stock. Solo los pagos y devoluciones de ese servicio se contabilizan en Caja Pub.
+
+`POST /api/reservations/:id/move` registra un traslado con fecha, unidades de destino, salida y tarifa opcional. Usa la vista `reservation_occupancy` para validar cruces y conservar los tramos anteriores. `PATCH /api/folios/:id/lodging-rate` ajusta las tarifas de un rango dentro de la estadía y valida que cada cargo cubra los abonos aplicados. `POST /api/scanner/document` devuelve una imagen JPEG de Windows WIA a una sesión autenticada. El archivo temporal se elimina después de la captura.
+
+`POST /api/reservations/:id/guests` registra una incorporación desde `joined_on` hasta la salida, con la unidad y tarifa adicional por noche. Valida capacidad, cruces y el estado de la reserva en una transacción. Las incorporaciones se guardan en `guests` y aparecen en `added_guests`. El PAX original sigue siendo la base de reparto de las hojas existentes. La hoja conjunta suma la tarifa adicional por fecha y la modalidad individual crea una hoja para el nuevo huésped.
 
 Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "error": "mensaje" }` con 400, 401, 403, 404 o 409 según corresponda.
 
@@ -85,7 +91,7 @@ La interfaz no expone aún renombrar habitaciones aunque la API lo permite. No h
 
 ## Acceso y operación local
 
-Contraseñas con scrypt, salt aleatorio y comparación constante. Sesiones aleatorias en memoria, cookie HttpOnly/SameSite=Strict y duración de 12 horas. La caja resuelve la instancia de turno por usuario y horario en cada petición autenticada. La instancia persiste hasta el fin del tramo, incluso al salir de la sesión o reiniciar la aplicación. Los ajustes del calendario se aplican a los próximos turnos. Roles consultados en cada petición. Inicio de sesión limitado a ocho fallos por IP en 15 minutos. Los controles de Host y Origin acotan acceso al equipo local y puertos conocidos.
+Contraseñas con scrypt, salt aleatorio y comparación constante. Sesiones aleatorias en memoria, cookie HttpOnly/SameSite=Strict y duración de 12 horas. Caja consulta el horario sin crear turnos. Los cobros, abonos, devoluciones y movimientos manuales resuelven el turno dentro de la transacción. Las instancias programadas conservan sus horas y solo se reutilizan mientras estén abiertas. Roles consultados en cada petición. Inicio de sesión limitado a ocho fallos por IP en 15 minutos. Los controles de Host y Origin acotan acceso al equipo local y puertos conocidos.
 
 No hay cifrado del archivo SQLite: la protección del equipo y los respaldos sigue siendo necesaria. No exponer el servidor a otras interfaces de red. Las medidas actuales son para un único equipo local; compartir en LAN requiere una revisión específica.
 

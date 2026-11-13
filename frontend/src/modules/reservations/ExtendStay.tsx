@@ -6,11 +6,12 @@ import { lodgingTotal, normalRoomRate } from "../../lib/lodging";
 import { cents, money } from "../../lib/money";
 import type { Reservation, Room } from "../../lib/types";
 
-export function ExtendStay({ reservation, rooms, onClose, onSaved }: {
+export function ExtendStay({ reservation, rooms, onClose, onSaved, onMove }: {
   reservation: Reservation;
   rooms: Room[];
   onClose: () => void;
   onSaved: () => Promise<void>;
+  onMove?: () => void;
 }) {
   const r = reservation;
   const group = r.room_assignments.length > 0;
@@ -54,8 +55,12 @@ export function ExtendStay({ reservation, rooms, onClose, onSaved }: {
         <p><strong>{r.guest_name}</strong> · {rooms.map((room) => room.name).join(", ")} · Reserva #{r.id}</p>
         <p className="muted">Estadía actual del {shortDate(r.check_in)} al {shortDate(r.check_out)}. Las noches actuales conservan su tarifa.</p>
         <ErrorBox message={error} />
+        {onMove && <div className="row-actions"><button type="button" className="button secondary" onClick={onMove} disabled={busy}>
+          Alargar en otra habitación
+        </button></div>}
         <div className="form-grid">
-          <label>Nueva llegada<input type="date" value={start} max={r.check_in} onChange={(e) => setStart(e.target.value)} required /></label>
+          <label>Nueva llegada<input type="date" value={start} max={r.check_in} disabled={!!r.moves.length}
+            onChange={(e) => setStart(e.target.value)} required /></label>
           <label>Nueva salida<input type="date" value={end} min={r.check_out} onChange={(e) => setEnd(e.target.value)} required /></label>
         </div>
         <label>{group ? "Tarifa total del grupo por noche adicional" : `Tarifa normal por noche adicional para ${r.pax} PAX`} (Bs)

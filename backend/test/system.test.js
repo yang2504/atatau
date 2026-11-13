@@ -24,6 +24,7 @@ test("reservas, permisos y persistencia transaccional", async () => {
   }
   try {
     assert.equal((await request("/rooms")).status, 401);
+    assert.equal((await request("/scanner/document", {})).status, 401);
     assert.equal((await request("/auth/setup", [])).status, 400);
     const setup = await request("/auth/setup", {
       name: "Prueba",
@@ -32,6 +33,11 @@ test("reservas, permisos y persistencia transaccional", async () => {
     });
     assert.equal(setup.status, 200);
     cookie = setup.cookie;
+    const emptyTurn = (await request("/cash/turns/current")).body;
+    assert.equal(emptyTurn.id, null);
+    assert.deepEqual(emptyTurn.entries, []);
+    assert.deepEqual((await request("/cash/turns")).body, []);
+    assert.equal(db.prepare("SELECT COUNT(*) AS n FROM cash_turns").get().n, 0);
     assert.equal(
       (
         await request("/auth/setup", {
@@ -486,6 +492,11 @@ test("reservas, permisos y persistencia transaccional", async () => {
       && row.id === pubExpense.body.id && row.physical_cents === 1000));
     assert.ok(!(await request(monthPath)).body.some((row) => row.source === "manual" && row.id === pubExpense.body.id));
     assert.equal((await request("/cash/daily?box=otro")).status, 400);
+    const emptyLegacy = db.prepare(`INSERT INTO cash_turns(user_id,user_name,started_at,expires_at,window_key)
+      VALUES(?,?,?,?,?) RETURNING id`).get(receptionist.body.id, "Recepción", "2020-01-01T12:00:00.000Z",
+      "2020-01-01T13:00:00.000Z", "extra:2020-01-01T12:00:00.000Z");
+    assert.ok(!(await request("/cash/turns", undefined, "GET", receptionLogin.cookie)).body.some((row) => row.id === emptyLegacy.id));
+    assert.equal((await request(`/cash/turns/${emptyLegacy.id}`, undefined, "GET", receptionLogin.cookie)).body.id, emptyLegacy.id);
     const ownTurn = (await request("/cash/turns/current", undefined, "GET", receptionLogin.cookie)).body;
     assert.deepEqual(ownTurn.entries.map((row) => [row.source, row.id]), [["manual", manualCard.body.id]]);
     assert.ok(ownTurn.entries[0].recorded_at);
@@ -715,6 +726,7 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal(secondReception.status, 200);
     const newTurn = (await request("/cash/turns/current", undefined, "GET", secondReception.cookie)).body;
     assert.equal(newTurn.id, ownTurn.id);
+    assert.equal(newTurn.expires_at, ownTurn.expires_at);
     assert.deepEqual(newTurn.entries, turnWithRefunds.entries);
     const previous = (await request(`/cash/turns/${ownTurn.id}`, undefined, "GET", secondReception.cookie)).body;
     assert.equal(previous.ended_at, null);
@@ -826,6 +838,163 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal((await request("/reservations", {
       ...draft, check_in: bookingGroup.check_in, check_out: bookingGroup.check_out, pax: 1, platform_id: 1, unit_ids: [dormUnit],
     })).status, 201);
+    const lateRoom = await request("/rooms", { name: "Dormitorio de siete", type: "dorm", capacity: 7 });
+    const beds = (await request("/rooms")).body.find((room) => room.id === lateRoom.body.id).units.map((unit) => unit.id);
+    const lateStay = { ...draft, platform_id: 1, pax: 6, unit_ids: beds.slice(0, 6), breakfast: 1,
+      check_in: "2090-04-01", check_out: "2090-04-05", nightly_cents: 60000 };
+    const booked = await request("/reservations", lateStay);
+    assert.equal(booked.status, 201);
+    const latePath = `/reservations/${booked.body.id}`;
+    const shared = (await request("/folios")).body.find((folio) => folio.reservation_id === booked.body.id);
+    const sharedPath = `/folios/${shared.id}`;
+    const historicalPayment = await request(sharedPath + "/payments", {
+      lodging_day: "2090-04-01", amount_cents: 60000, day: localDay(), method: "QR",
+    });
+    assert.equal(historicalPayment.status, 201);
+    const earlyStay = { ...lateStay, pax: 1, unit_ids: beds.slice(-1), check_out: "2090-04-03" };
+    assert.equal((await request("/reservations", earlyStay)).status, 201);
+    const addition = { name: "Llegó después", unit_id: beds[6], joined_on: "2090-04-03", nightly_cents: 10000,
+      expected_added: 0, expected_check_out: lateStay.check_out };
+    assert.equal((await request(latePath + "/guests", { ...addition, joined_on: "2090-04-02" })).status, 409);
+    assert.equal((await request(latePath + "/guests", { ...addition, joined_on: lateStay.check_out })).status, 400);
+    const added = await request(latePath + "/guests", addition);
+    assert.equal(added.status, 201, added.body.error);
+    assert.equal((await request(latePath + "/guests", addition)).status, 409);
+    assert.equal((await request(latePath + "/guests", { ...addition, expected_added: 1 })).status, 409);
+    assert.equal((await request("/reservations", { ...earlyStay, check_in: "2090-04-03", check_out: "2090-04-04" })).status, 409);
+    const lateDetails = (await request(sharedPath)).body;
+    assert.deepEqual(lateDetails.entries.map((entry) => entry.total_cents), [60000, 60000, 70000, 70000]);
+    assert.equal(lateDetails.entries[0].paid_cents, 60000);
+    for (const [day, count] of [["2090-04-03", 6], ["2090-04-04", 7]]) {
+      const meals = (await request(`/reservations/breakfast?day=${day}`)).body;
+      assert.equal(meals.filter((row) => row.reservation_id === booked.body.id).length, count);
+    }
+    assert.equal((await request(`/rooms/${lateRoom.body.id}`, { capacity: 6 }, "PATCH")).status, 409);
+    const privateStay = { ...lateStay, pax: 1, folio_mode: "individual", unit_ids: draft.unit_ids };
+    const privateBooking = await request("/reservations", privateStay);
+    assert.equal(privateBooking.status, 201);
+    const privatePath = `/reservations/${privateBooking.body.id}`;
+    assert.equal((await request(privatePath + "/guests", { ...addition, unit_id: draft.unit_ids[0] })).status, 201);
+    assert.equal((await request(privatePath + "/guests", { ...addition, unit_id: draft.unit_ids[0], expected_added: 1 })).status, 409);
+    const privateFolios = (await request("/folios")).body.filter((folio) => folio.reservation_id === privateBooking.body.id);
+    assert.equal(privateFolios.length, 2);
+    for (const folio of privateFolios) {
+      const sheet = (await request(`/folios/${folio.id}`)).body;
+      assert.deepEqual(sheet.entries.map((entry) => entry.total_cents), folio.joined_on ? [10000, 10000] : [60000, 60000, 60000, 60000]);
+    }
+    const extraGroup = await request("/reservations", {
+      ...bookingGroup, check_in: "2090-05-01", check_out: "2090-05-05",
+      status: "pending", advance_payment: undefined,
+    });
+    assert.equal(extraGroup.status, 201, extraGroup.body.error);
+    const extraGroupId = extraGroup.body.id;
+    const addedToGroup = await request(`/reservations/${extraGroupId}/guests`, {
+      ...addition, unit_id: rooms[1].units[1].id, joined_on: "2090-05-03", expected_check_out: "2090-05-05", nightly_cents: 0,
+    });
+    assert.equal(addedToGroup.status, 201, addedToGroup.body.error);
+    assert.equal((await request("/folios")).body.filter((folio) => folio.reservation_id === extraGroupId).length, 1);
+    const groupMeals = (await request("/reservations/breakfast?day=2090-05-04")).body.filter((row) => row.reservation_id === extraGroupId);
+    assert.equal(groupMeals.length, 5);
+    assert.equal(groupMeals.find((row) => row.id === addedToGroup.body.id).room_name, "Dormitorio actualizado");
+    const transferStay = { ...privateStay, guest_name: "Traslado de prueba", status: "in_house",
+      folio_mode: "shared", check_in: "2090-07-01", check_out: "2090-07-04", nightly_cents: 10000 };
+    const transferred = await request("/reservations", transferStay);
+    assert.equal(transferred.status, 201, transferred.body.error);
+    const transferPath = `/reservations/${transferred.body.id}`;
+    const transferFolio = (await request("/folios")).body.find((folio) => folio.reservation_id === transferred.body.id);
+    const transferSheet = `/folios/${transferFolio.id}`;
+    assert.equal((await request(transferSheet + "/payments", {
+      lodging_day: "2090-07-01", amount_cents: 10000, day: localDay(), method: "QR",
+    })).status, 201);
+    const destination = beds[0];
+    const transfer = { day: "2090-07-03", check_out: "2090-07-05", unit_ids: [destination], nightly_cents: 15000,
+      expected_check_out: transferStay.check_out, expected_last_move: null };
+    const conflict = await request("/reservations", { ...transferStay, unit_ids: [destination], check_in: "2090-07-04", check_out: "2090-07-05" });
+    assert.equal(conflict.status, 201);
+    assert.equal((await request(transferPath + "/move", transfer)).status, 409);
+    assert.equal((await request(`/reservations/${conflict.body.id}`, {
+      ...transferStay, unit_ids: [destination], check_in: "2090-07-04", check_out: "2090-07-05", status: "cancelled",
+    }, "PUT")).status, 200);
+    const changed = await request(transferPath + "/move", transfer);
+    assert.equal(changed.status, 200, changed.body.error);
+    const recorded = (await request("/reservations")).body.find((row) => row.id === transferred.body.id);
+    assert.deepEqual(recorded.occupancy, [
+      { unit_id: transferStay.unit_ids[0], starts_on: "2090-07-01", ends_on: "2090-07-03" },
+      { unit_id: destination, starts_on: "2090-07-03", ends_on: "2090-07-05" },
+    ]);
+    const reused = await request("/reservations", { ...transferStay, check_in: "2090-07-03", check_out: "2090-07-05" });
+    assert.equal(reused.status, 201);
+    assert.equal((await request("/reservations", { ...transferStay, unit_ids: [destination], check_in: "2090-07-04" , check_out: "2090-07-05" })).status, 409);
+    const transferMeals = (await request("/reservations/breakfast?day=2090-07-04")).body
+      .filter((row) => row.reservation_id === transferred.body.id);
+    assert.equal(transferMeals[0].room_name, "Dormitorio de siete");
+    const afterTransfer = (await request(transferSheet)).body;
+    assert.equal(afterTransfer.id, transferFolio.id);
+    assert.deepEqual(afterTransfer.entries.map((row) => row.total_cents), [10000, 10000, 15000, 15000]);
+    assert.equal(afterTransfer.entries[0].paid_cents, 10000);
+    const repricing = { start: "2090-07-01", end: "2090-07-02", nightly_cents: 9999,
+      expected_rates: recorded.night_rates, expected_base: recorded.nightly_cents };
+    assert.equal((await request(transferSheet + "/lodging-rate", repricing, "PATCH")).status, 409);
+    assert.equal((await request(transferSheet + "/lodging-rate", { ...repricing, nightly_cents: 11000 }, "PATCH")).status, 200);
+    const adjusted = (await request(transferSheet)).body.entries[0];
+    assert.equal(adjusted.paid_cents, 10000);
+    assert.equal(adjusted.balance_cents, 1000);
+    const returnMove = await request(transferPath + "/move", {
+      day: "2090-07-05", check_out: "2090-07-06", unit_ids: transferStay.unit_ids, nightly_cents: 12000,
+      expected_check_out: "2090-07-05", expected_last_move: transfer.day,
+    });
+    assert.equal(returnMove.status, 200, returnMove.body.error);
+    assert.deepEqual((await request(transferSheet)).body.entries.map((row) => row.total_cents), [11000, 10000, 15000, 15000, 12000]);
+    const yesterday = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.parse(today) + 86400000).toISOString().slice(0, 10);
+    const checkoutRoom = await request("/rooms", { name: "Salida de hoy QA", type: "private", capacity: 1 });
+    const checkoutUnit = (await request("/rooms")).body.find((room) => room.id === checkoutRoom.body.id).units[0].id;
+    const checkedOut = await request("/reservations", { ...transferStay, status: "checked_out",
+      unit_ids: [checkoutUnit], check_in: yesterday, check_out: today });
+    assert.equal(checkedOut.status, 201, checkedOut.body.error);
+    const continuedToday = await request(`/reservations/${checkedOut.body.id}/move`, {
+      day: today, check_out: tomorrow, unit_ids: [destination], nightly_cents: 12000,
+      expected_check_out: today, expected_last_move: null,
+    });
+    assert.equal(continuedToday.status, 200, continuedToday.body.error);
+    assert.equal((await request("/reservations")).body.find((row) => row.id === checkedOut.body.id).status, "in_house");
+    const photo = Buffer.from([255, 216, 255, 217]);
+    const snack = await request("/pub", { name: "Merienda QA", price_cents: 1250, low_stock: 2, photo: photo.toString("base64") });
+    assert.equal(snack.status, 201, snack.body.error);
+    const snackPath = `/pub/${snack.body.id}`;
+    const loadedPhoto = await fetch(base + snackPath + "/photo", { headers: { cookie } });
+    assert.equal(loadedPhoto.headers.get("content-type"), "image/jpeg");
+    assert.deepEqual(Buffer.from(await loadedPhoto.arrayBuffer()), photo);
+    const listedSnack = (await request("/pub")).body.find((item) => item.id === snack.body.id);
+    assert.equal(listedSnack.low_stock, 2);
+    assert.ok(listedSnack.photo_revision);
+    assert.equal(listedSnack.jpeg, undefined);
+    assert.equal((await request(snackPath, { name: listedSnack.name, price_cents: 1250, photo: "aGVsbG8=" }, "PATCH")).status, 400);
+    assert.equal((await request(snackPath + "/movements", { kind: "in", quantity: 3, detail: "Compra" })).status, 201);
+    const guestSheet = (await request("/folios")).body.find((folio) => folio.reservation_id === checkedOut.body.id);
+    const debt = { kind: "sale", quantity: 1, base_cents: 1250, folio_id: guestSheet.id };
+    assert.equal((await request(snackPath + "/movements", { ...debt, folio_id: transferFolio.id })).status, 409);
+    assert.equal((await request("/pub")).body.find((item) => item.id === snack.body.id).stock, 3);
+    const credit = await request(snackPath + "/movements", debt);
+    assert.equal(credit.status, 201, credit.body.error);
+    assert.equal(credit.body.stock, 2);
+    assert.equal(credit.body.cash_cents, 0);
+    assert.ok(!(await request("/cash/daily?box=pub")).body.some((row) => row.source === "pop" && row.id === credit.body.id));
+    const charge = (await request(`/folios/${guestSheet.id}`)).body.entries.find((entry) => entry.service === "Consumo Pub");
+    assert.equal(charge.total_cents, 1250);
+    const paymentPath = `/folios/${guestSheet.id}/payments`;
+    const creditPayment = await request(paymentPath, { service_id: charge.service_id, day: today, amount_cents: 1000, method: "QR" });
+    assert.equal(creditPayment.status, 201, creditPayment.body.error);
+    assert.ok(!(await request("/cash/daily")).body.some((row) => row.source === "folio" && row.id === creditPayment.body.id));
+    const pubIncome = (await request("/cash/daily?box=pub")).body.find((row) => row.source === "folio" && row.id === creditPayment.body.id);
+    assert.equal(pubIncome.base_cents, 1000);
+    assert.equal(pubIncome.physical_cents, 0);
+    const pubRefund = await request(`${paymentPath}/${creditPayment.body.id}/refunds`, { amount_cents: 250, reason: "Ajuste" });
+    assert.equal(pubRefund.status, 201, pubRefund.body.error);
+    assert.equal((await request("/cash/daily?box=pub")).body.find((row) => row.source === "refund" && row.id === pubRefund.body.id).base_cents, 250);
+    assert.ok(!(await request("/cash/daily")).body.some((row) => row.source === "refund" && row.id === pubRefund.body.id));
+    assert.equal((await request(snackPath, { name: listedSnack.name, price_cents: 1250, photo: null }, "PATCH")).status, 200);
+    assert.equal((await request(snackPath + "/photo")).status, 404);
     assert.equal((await request("/auth/logout", {})).status, 200);
     assert.equal((await request("/rooms")).status, 401);
   } finally {

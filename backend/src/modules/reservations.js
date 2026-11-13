@@ -3,7 +3,7 @@ import { transaction } from "../core/database.js";
 import { MAX_NIGHTLY_CENTS, nightDates, nightRates, paidNights } from "./lodging.js";
 import { localDay } from "../core/charges.js";
 import { canSeeSuperadmin } from "./users.js";
-import { ensureReservationFolios, recordStayPayment } from "./folios.js";
+import { ensureReservationFolios, recordStayPayment, setNightlyRates } from "./folios.js";
 import {
   text,
   integer,
@@ -12,6 +12,31 @@ import {
   fail,
   audit,
 } from "../core/validation.js";
+
+const addedGuests = (db, id) => db.prepare(`SELECT id,name,joined_on,unit_id,nightly_cents
+  FROM guests WHERE reservation_id=? AND joined_on IS NOT NULL ORDER BY id`).all(id);
+
+function occupiedUnit(db) {
+  return db.prepare(`SELECT 1 FROM reservations r
+    JOIN reservation_occupancy a ON a.reservation_id=r.id WHERE a.unit_id=:unit
+    AND r.id<>:id AND r.status<>'cancelled' AND a.starts_on<a.ends_on AND a.starts_on<:end AND a.ends_on>:start
+    LIMIT 1`);
+}
+
+const movesFor = (db, id) => db.prepare(
+  "SELECT day,unit_id FROM reservation_moves WHERE reservation_id=? ORDER BY day,unit_id",
+).all(id);
+
+const occupancyFor = (db, id) => db.prepare(
+  "SELECT unit_id,starts_on,ends_on FROM reservation_occupancy WHERE reservation_id=? AND starts_on<ends_on ORDER BY starts_on,unit_id",
+).all(id);
+
+function validateExtraRates(extras, start, end, base, rates) {
+  for (const day of nightDates(start, end)) {
+    const total = extras.reduce((sum, guest) => sum + (guest.joined_on <= day ? guest.nightly_cents : 0), rates[day] ?? base ?? 0);
+    if (total > MAX_NIGHTLY_CENTS) fail("El total por noche supera el importe permitido.");
+  }
+}
 
 export function listReservations(db, full = 1) {
   return db
@@ -51,13 +76,16 @@ export function listReservations(db, full = 1) {
       night_rates: rates,
       paid_nights: paidNights(db, r.id, r.nightly_cents, rates),
       room_assignments: roomAssignments(db, r.id),
+      added_guests: addedGuests(db, r.id),
+      moves: movesFor(db, r.id),
+      occupancy: occupancyFor(db, r.id),
       unit_ids: db
         .prepare("SELECT unit_id FROM allocations WHERE reservation_id=?")
         .all(r.id)
         .map((a) => a.unit_id),
       guests: db
         .prepare(
-          "SELECT id,name FROM guests WHERE reservation_id=? ORDER BY id",
+          "SELECT id,name FROM guests WHERE reservation_id=? AND joined_on IS NULL ORDER BY id",
         )
         .all(r.id),
       };
@@ -79,10 +107,104 @@ function reservationSnapshot(db, reservation, rates) {
       FROM allocations a JOIN units u ON u.id=a.unit_id JOIN rooms room ON room.id=u.room_id
       WHERE a.reservation_id=? ORDER BY a.unit_id`).all(fields.id).map(({ pax, ...unit }) =>
         pax === null ? unit : { ...unit, pax }),
-    guests: db.prepare("SELECT id,name FROM guests WHERE reservation_id=? ORDER BY id").all(fields.id),
+    guests: db.prepare("SELECT id,name FROM guests WHERE reservation_id=? AND joined_on IS NULL ORDER BY id").all(fields.id),
+    added_guests: addedGuests(db, fields.id),
+    moves: movesFor(db, fields.id),
     folios: db.prepare("SELECT id,title FROM folios WHERE reservation_id=? ORDER BY id").all(fields.id),
     night_rates: rates,
   };
+}
+
+function addGuest(db, id, body, user) {
+  return transaction(db, () => {
+    const reservation = db.prepare("SELECT * FROM reservations WHERE id=?").get(id);
+    if (!reservation) fail("Reserva inexistente.", 404);
+    if (movesFor(db, id).length) fail("La incorporación requiere una reserva sin traslados registrados.", 409);
+    if (!["pending", "confirmed", "in_house"].includes(reservation.status) || reservation.check_out <= localDay())
+      fail("Solo puedes ampliar los huéspedes de una reserva activa.", 409);
+    const day = date(body.joined_on);
+    if (day < reservation.check_in || day >= reservation.check_out)
+      fail("La incorporación debe estar dentro de las noches de la reserva.");
+    const name = text(body.name, "Nombre del huésped", 100);
+    const rate = integer(body.nightly_cents, "Tarifa adicional por noche", 0, MAX_NIGHTLY_CENTS);
+    const unitId = integer(body.unit_id, "Habitación o cama");
+    const unit = db.prepare(`SELECT u.*,r.type,r.active AS room_active FROM units u JOIN rooms r ON r.id=u.room_id
+      WHERE u.id=?`).get(unitId);
+    if (!unit?.active || !unit.room_active) fail("La habitación o la cama no está habilitada.");
+    const original = db.prepare(`SELECT a.unit_id,a.pax FROM allocations a JOIN units u ON u.id=a.unit_id
+      WHERE a.reservation_id=? AND u.room_id=?`).all(id, unit.room_id);
+    if (!original.length) fail("Selecciona un cuarto que ya pertenezca a esta reserva.");
+    const extras = addedGuests(db, id);
+    if (body.expected_added !== extras.length) fail("Los huéspedes cambiaron. Vuelve a abrir la reserva.", 409);
+    if (body.expected_check_out !== reservation.check_out)
+      fail("La fecha de salida cambió. Vuelve a abrir la reserva.", 409);
+    const nightRatesByDay = nightRates(db, id);
+    const before = reservationSnapshot(db, reservation, nightRatesByDay);
+    if (unit.type === "private") {
+      if ((original[0].pax ?? reservation.pax) + extras.filter((guest) => guest.unit_id === unitId).length >= unit.capacity)
+        fail("La habitación no tiene plazas para otro huésped durante toda su estadía.", 409);
+    } else if (original.some((item) => item.unit_id === unitId) || extras.some((guest) => guest.unit_id === unitId) ||
+        occupiedUnit(db).get({ unit: unitId, id, end: reservation.check_out, start: day })) {
+      fail("La cama está ocupada durante parte de la estadía. Elige otra cama.", 409);
+    }
+    validateExtraRates([...extras, { joined_on: day, nightly_cents: rate }], day, reservation.check_out, reservation.nightly_cents, nightRatesByDay);
+    const result = db.prepare("INSERT INTO guests(reservation_id,name,joined_on,unit_id,nightly_cents) VALUES(?,?,?,?,?)")
+      .run(id, name, day, unitId, rate);
+    if (reservation.folio_mode === "individual" && (reservation.status !== "pending" ||
+      db.prepare("SELECT 1 FROM folios WHERE reservation_id=?").get(id)))
+      ensureReservationFolios(db, id, "individual", "", user);
+    audit(db, user, "add_guest", "reservation", id, before, reservationSnapshot(db, reservation, nightRatesByDay));
+    return { id: Number(result.lastInsertRowid) };
+  });
+}
+
+function moveReservation(db, id, body, user) {
+  return transaction(db, () => {
+    const r = db.prepare("SELECT * FROM reservations WHERE id=?").get(id);
+    if (!r) fail("Reserva inexistente.", 404);
+    const reopening = r.status === "checked_out" && r.check_out === localDay();
+    if ((!["pending", "confirmed", "in_house"].includes(r.status) && !reopening) ||
+        roomAssignments(db, id).length || addedGuests(db, id).length)
+      fail("El traslado se aplica a reservas activas de un solo cuarto, sin incorporaciones.", 409);
+    const moves = movesFor(db, id);
+    if (body.expected_check_out !== r.check_out || body.expected_last_move !== (moves.at(-1)?.day ?? null))
+      fail("La reserva cambió. Vuelve a abrirla.", 409);
+    const day = date(body.day);
+    const end = date(body.check_out);
+    if (day < r.check_in || (moves.length && day <= moves.at(-1).day) || day > r.check_out ||
+        day < localDay() || end < r.check_out || end <= day || Date.parse(end) - Date.parse(r.check_in) > 366 * 86400000)
+      fail("Elige una fecha de traslado válida y una salida posterior. Conserva las noches ya reservadas.");
+    const ids = body.unit_ids;
+    if (!Array.isArray(ids) || !ids.length || ids.length > 30 || new Set(ids).size !== ids.length)
+      fail("Selecciona las plazas del cuarto de destino.");
+    const find = db.prepare(`SELECT u.*,r.type,r.active AS room_active FROM units u JOIN rooms r ON r.id=u.room_id WHERE u.id=?`);
+    const units = ids.map((id) => find.get(integer(id, "Plaza")));
+    if (units.some((unit) => !unit?.active || !unit.room_active))
+      fail("Una de las plazas ya no está habilitada.");
+    const first = units[0];
+    if (units.some((unit) => unit.room_id !== first.room_id) ||
+        (first.type === "private" ? units.length !== 1 || r.pax > first.capacity : units.length !== r.pax))
+      fail("Elige un cuarto con capacidad suficiente o una cama por persona.");
+    const previousUnits = occupancyFor(db, id).filter((span) => span.starts_on <= day && span.ends_on >= day &&
+      span.ends_on === r.check_out);
+    if (!previousUnits.length || find.get(previousUnits[0].unit_id).room_id === first.room_id)
+      fail("Selecciona un cuarto distinto al actual.");
+    const overlap = occupiedUnit(db);
+    if (units.some((unit) => overlap.get({ unit: unit.id, id, end, start: day })))
+      fail("El cuarto o una cama de destino está ocupada en esas fechas.", 409);
+    const rate = body.nightly_cents == null ? null : integer(body.nightly_cents, "Tarifa por noche", 0, MAX_NIGHTLY_CENTS);
+    if (end > r.check_out && rate === null) fail("Indica la tarifa de las noches adicionales.");
+    const rates = nightRates(db, id);
+    const before = reservationSnapshot(db, r, rates);
+    const insert = db.prepare("INSERT INTO reservation_moves(reservation_id,day,unit_id) VALUES(?,?,?)");
+    for (const unit of units) insert.run(id, day, unit.id);
+    const status = reopening ? "in_house" : r.status;
+    db.prepare("UPDATE reservations SET check_out=?,status=? WHERE id=?").run(end, status, id);
+    if (rate !== null) setNightlyRates(db, { ...r, check_out: end }, day, end, rate);
+    audit(db, user, "move_room", "reservation", id, before,
+      reservationSnapshot(db, { ...r, status, check_out: end }, nightRates(db, id)));
+    return { id };
+  });
 }
 
 export function saveReservation(db, body, user, id = null, extension = false) {
@@ -92,6 +214,8 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       : null;
     if (id && !previous) fail("Reserva inexistente.", 404);
     const previousRooms = previous ? roomAssignments(db, id) : [];
+    const extras = previous ? addedGuests(db, id) : [];
+    const moves = previous ? movesFor(db, id) : [];
     let extensionRate;
     if (extension) {
       if (!["pending", "confirmed", "in_house"].includes(previous.status))
@@ -250,7 +374,7 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       const savedUnits = db.prepare("SELECT unit_id FROM allocations WHERE reservation_id=?").all(id);
       keepHistory = savedUnits.length === uniqueUnits.size && savedUnits.every((unit) => uniqueUnits.has(unit.unit_id));
     }
-    if (units.some((u) => !u || (!keepHistory && (!u.active || !u.room_active))))
+    if (units.some((u) => !u || (!moves.length && !keepHistory && (!u.active || !u.room_active))))
       fail("La habitación o la cama no está habilitada.");
     if (group) {
       const unitsById = new Map(units.map((unit) => [unit.id, unit]));
@@ -265,18 +389,34 @@ export function saveReservation(db, body, user, id = null, extension = false) {
     } else if (new Set(units.map((u) => u.room_id)).size !== 1) {
       fail("Elige Reserva de grupo para asignar más de una habitación.");
     } else if (
-      units[0].type === "dorm" ? pax !== units.length : !keepHistory && pax > units[0].capacity
+      units[0].type === "dorm" ? pax !== units.length : !moves.length && !keepHistory && pax > units[0].capacity
     )
       fail(
         "Asigna una cama por persona en dormitorios y respeta la capacidad de las privadas.",
       );
     // Half-open intervals: checkout day can be another guest's check-in day.
-    if (status !== "cancelled") {
-      const overlap = db.prepare(
-        "SELECT r.guest_name FROM allocations a JOIN reservations r ON r.id=a.reservation_id WHERE a.unit_id=? AND r.id<>? AND r.status<>'cancelled' AND r.check_in<? AND r.check_out>? LIMIT 1",
-      );
+    if (moves.length) {
+      if (start !== previous.check_in || end <= moves.at(-1).day ||
+          before.units.length !== uniqueUnits.size || before.units.some((unit) => !uniqueUnits.has(unit.unit_id)))
+        fail("Usa Cambiar de habitación para conservar los traslados registrados.", 409);
+      if (status !== "cancelled") {
+        const overlap = occupiedUnit(db);
+        const find = db.prepare(`SELECT u.active,u.capacity,r.active AS room_active,r.type
+          FROM units u JOIN rooms r ON r.id=u.room_id WHERE u.id=?`);
+        for (const span of occupancyFor(db, id)) {
+          const stop = span.ends_on === previous.check_out || span.ends_on > end ? end : span.ends_on;
+          if (span.starts_on >= stop) continue;
+          if (overlap.get({ unit: span.unit_id, id, end: stop, start: span.starts_on }))
+            fail("Una plaza del traslado está ocupada en esas fechas.", 409);
+          const unit = find.get(span.unit_id);
+          if (stop > localDay() && (!unit.active || !unit.room_active || (unit.type === "private" && unit.capacity < pax)))
+            fail("Una plaza del traslado ya no tiene capacidad o está inhabilitada.", 409);
+        }
+      }
+    } else if (status !== "cancelled") {
+      const overlap = occupiedUnit(db);
       for (const unit of units)
-        if (overlap.get(unit.id, id ?? 0, end, start))
+        if (overlap.get({ unit: unit.id, id: id ?? 0, end, start }))
           fail(
             group ? `${unit.room_name} · ${unit.label} ya está ocupada en esas fechas.`
               : "Hay una reserva que ocupa esas fechas. Elige otra cama o cambia el rango.",
@@ -287,6 +427,33 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       fail(
         "En esta primera versión, PAX y tipo de cuenta quedan fijos al crear la reserva para conservar las hojas. Cancela y crea otra reserva si necesitas cambiarlos.",
       );
+    if (extras.length) {
+      const sameUnits = before.units.length === uniqueUnits.size && before.units.every((unit) => uniqueUnits.has(unit.unit_id));
+      const samePlaces = previousRooms.every((room) => places.get(room.room_id)?.count === room.pax);
+      if (!sameUnits || !samePlaces || (!extension && start !== previous.check_in) ||
+          extras.some((guest) => guest.joined_on < start || guest.joined_on >= end))
+        fail("Conserva la distribución y las fechas de los huéspedes incorporados.", 409);
+      if (status !== "cancelled") {
+        const overlap = occupiedUnit(db);
+        const activeUnit = db.prepare(`SELECT u.capacity FROM units u JOIN rooms r ON r.id=u.room_id
+          WHERE u.id=? AND u.active=1 AND r.active=1`);
+        const countByUnit = new Map();
+        for (const guest of extras)
+          if (overlap.get({ unit: guest.unit_id, id, end, start: guest.joined_on }))
+            fail(`La plaza de ${guest.name} está ocupada en el nuevo rango.`, 409);
+          else countByUnit.set(guest.unit_id, (countByUnit.get(guest.unit_id) ?? 0) + 1);
+        if (!keepHistory) {
+          for (const [unitId, count] of countByUnit) {
+            const capacity = activeUnit.get(unitId)?.capacity ?? 0;
+            const assigned = units.find((unit) => unit.id === unitId);
+            const originalPax = assigned ? places.get(assigned.room_id)?.count ?? pax : 0;
+            if (originalPax + count > capacity)
+              fail("Una plaza de los huéspedes incorporados ya no está habilitada o excede la capacidad.", 409);
+          }
+        }
+      }
+      validateExtraRates(extras, start, end, nightlyCents, nextRates);
+    }
     if (!id) {
       id = Number(
         db
@@ -346,7 +513,7 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       const updateGuest = db.prepare("UPDATE guests SET name=? WHERE id=?");
       if (!group) updateGuest.run(guestName, first.id);
       else if (Array.isArray(body.guest_names)) {
-        const guests = db.prepare("SELECT id FROM guests WHERE reservation_id=? ORDER BY id").all(id);
+        const guests = db.prepare("SELECT id FROM guests WHERE reservation_id=? AND joined_on IS NULL ORDER BY id").all(id);
         guests.forEach((guest, index) => {
           const name = body.guest_names[index];
           updateGuest.run(name ? text(name, "Nombre del huésped", 100) : `Huésped ${index + 1}`, guest.id);
@@ -408,10 +575,12 @@ export function reservationModule(db) {
         SELECT * FROM reservations WHERE breakfast=1 AND status<>'cancelled' AND check_in<? AND check_out>=?
       ), people AS (
         SELECT g.*, ROW_NUMBER() OVER (PARTITION BY g.reservation_id ORDER BY g.id) AS position
-        FROM guests g JOIN stays r ON r.id=g.reservation_id
+        FROM guests g JOIN stays r ON r.id=g.reservation_id WHERE g.joined_on IS NULL
       ), rooms_for_stay AS (
         SELECT r.id AS reservation_id,u.room_id,COALESCE(SUM(a.pax),r.pax) AS pax
-        FROM stays r JOIN allocations a ON a.reservation_id=r.id JOIN units u ON u.id=a.unit_id
+        FROM stays r JOIN reservation_occupancy o ON o.reservation_id=r.id AND o.extra=0
+          AND o.starts_on<o.ends_on AND o.starts_on<? AND o.ends_on>=?
+        JOIN units u ON u.id=o.unit_id LEFT JOIN allocations a ON a.reservation_id=r.id AND a.unit_id=o.unit_id
         GROUP BY r.id,u.room_id
       ), places AS (
         SELECT *,SUM(pax) OVER (PARTITION BY reservation_id ORDER BY room_id) AS last_position
@@ -421,8 +590,12 @@ export function reservationModule(db) {
       FROM stays r JOIN people g ON g.reservation_id=r.id
       JOIN places p ON p.reservation_id=r.id AND g.position BETWEEN p.last_position-p.pax+1 AND p.last_position
       JOIN rooms room ON room.id=p.room_id
-      ORDER BY room.name,r.id,g.id
-    `).all(day, day);
+      UNION ALL
+      SELECT g.id,g.name,r.id AS reservation_id,r.guest_name AS holder,r.status,room.name AS room_name
+      FROM stays r JOIN guests g ON g.reservation_id=r.id JOIN units u ON u.id=g.unit_id
+      JOIN rooms room ON room.id=u.room_id WHERE g.joined_on<?
+      ORDER BY room_name,reservation_id,g.id
+    `).all(day, day, day, day, day);
     res.json(guests);
   });
   router.post("/", (req, res) =>
@@ -430,6 +603,12 @@ export function reservationModule(db) {
   );
   router.post("/:id/extend", (req, res) =>
     res.json(saveReservation(db, req.body, req.user, integer(Number(req.params.id), "Reserva"), true)),
+  );
+  router.post("/:id/guests", (req, res) =>
+    res.status(201).json(addGuest(db, integer(Number(req.params.id), "Reserva"), req.body, req.user)),
+  );
+  router.post("/:id/move", (req, res) =>
+    res.json(moveReservation(db, integer(Number(req.params.id), "Reserva"), req.body, req.user)),
   );
   router.put("/:id", (req, res) =>
     res.json(

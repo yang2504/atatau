@@ -55,6 +55,9 @@ export type Reservation = {
   night_rates: Record<string, number>;
   unit_ids: number[];
   room_assignments: RoomAssignment[];
+  added_guests: { id: number; name: string; joined_on: string; unit_id: number; nightly_cents: number }[];
+  moves: { day: string; unit_id: number }[];
+  occupancy: { unit_id: number; starts_on: string; ends_on: string }[];
   guests: { id: number; name: string }[];
 };
 export type Note = {
@@ -93,6 +96,8 @@ export type Folio = {
   room_id: number | null;
   paid_months: string[];
   service_months: string[];
+  joined_on: string | null;
+  extra_unit_id: number | null;
 };
 export type Payment = {
   id: number;

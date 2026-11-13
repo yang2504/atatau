@@ -1,5 +1,31 @@
 # Cambios y decisiones importantes
 
+## 2026-11-13 — Turnos de caja independientes de la sesión
+
+- Abrir la aplicación, volver a iniciar sesión y consultar Caja ya no crean turnos. El primer movimiento de caja usa las horas programadas y registra el turno en la misma transacción. Los cambios de horario no reabren turnos cerrados ni generan un turno programado que se superponga a uno anterior.
+- Las operaciones fuera de horario se agrupan por persona y día de Bolivia. El historial omite los registros vacíos y conserva todos los movimientos y sus turnos previos.
+- Pasaron `npm test`, `npm run check` y `npm run build`. Las pruebas con datos ficticios cubren reconexión, cambio de horario, medianoche, consulta sin escritura e historial. En Chrome se registró un ingreso y se comprobó que al volver a entrar se conserva el mismo turno y movimiento. Queda pendiente actualizar la instalación de recepción.
+
+## 2026-11-13 — Catálogo de venta del Pub y egresos en Caja
+
+- El Pub muestra tarjetas con fotos, precios y alertas de stock. Los formularios de producto, venta y ajuste de stock se abren en modales. La migración 016 guarda las fotos JPEG en SQLite y agrega un umbral configurable por producto. Respaldar la carpeta de datos con Atatau detenido antes de aplicar la migración en recepción.
+- **A cuenta del huésped** descuenta stock y crea un cargo en la hoja en una sola transacción. Los abonos y devoluciones de ese cargo se contabilizan en Caja Pub.
+- Caja abre modales para ingresos, egresos y anulaciones. La vista **Egresos** destaca el importe y los movimientos vigentes del período.
+- Validado con `npm test`, `npm run check` y `npm run build`. En Chrome con datos ficticios se comprobó la foto, la venta a cuenta, el aviso de stock, el abono QR y el registro modal de egresos. Queda pendiente aplicar la migración en recepción.
+
+## 2026-11-13 — Traslados, tarifas y escaneo desde recepción
+
+- La migración 015 conserva las noches del cuarto anterior y registra la ocupación del destino por fecha. El traslado y la extensión mantienen la misma reserva y hojas. Disponible para reservas de un solo cuarto sin incorporaciones. Respaldar la carpeta de datos con Atatau detenido antes de aplicar la migración.
+- La hoja de consumo permite ajustar la tarifa por noche de un rango con auditoría y conserva los abonos. Si la tarifa queda por debajo del importe abonado, la operación se revierte.
+- El formulario de reserva permite escanear mediante Windows WIA y revisar o descargar un JPEG. La captura se mantiene como vista previa hasta cerrar el formulario. Validado el aviso cuando Windows no detecta un dispositivo. Queda pendiente probar una captura con la HP Smart Tank 580 conectada.
+- Validado con `npm test`, `npm run check` y `npm run build`. En Chrome con datos ficticios se revisaron el traslado, la extensión a otro cuarto, el ajuste en la misma hoja y el formulario en escritorio y móvil.
+
+## 2026-11-13 — Ampliar huéspedes durante una estadía
+
+- Recepción puede incorporar a un huésped con plaza libre en un cuarto de la reserva. El calendario y los desayunos usan su fecha de incorporación. La tarifa adicional puede ser cero y se aplica desde esa noche. La hoja conjunta se conserva, o se crea una hoja individual según la modalidad original.
+- La migración 014 añade fecha, plaza y tarifa a los huéspedes incorporados. Conserva los importes y abonos anteriores. Respaldar la carpeta de datos con Atatau detenido antes de aplicar la migración en recepción.
+- Validado con `npm test`, `npm run check` y `npm run build`. En Chrome con datos ficticios se revisó la incorporación por teclado, el formulario en móvil y escritorio, el calendario y el estado de dormitorio lleno.
+
 ## 2026-11-12 — Reservas de grupo con una hoja de consumo
 
 - **Nueva reserva → Reserva de grupo** permite combinar privadas y camas de distintos dormitorios bajo el mismo encargado y las mismas fechas. El formulario muestra las plazas libres y el total de personas, noches, hospedaje, adelanto y saldo. Desde el calendario, cada cuarto abre la misma hoja.

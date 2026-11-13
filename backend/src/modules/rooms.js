@@ -112,9 +112,11 @@ export function roomModule(db, admin) {
       !active &&
       db
         .prepare(
-          "SELECT 1 FROM allocations a JOIN units u ON u.id=a.unit_id JOIN reservations r ON r.id=a.reservation_id WHERE u.room_id=? AND r.status IN ('pending','confirmed','in_house')",
+          `SELECT 1 FROM reservation_occupancy a JOIN units u ON u.id=a.unit_id JOIN reservations r ON r.id=a.reservation_id
+          WHERE u.room_id=? AND a.starts_on<a.ends_on AND r.status IN ('pending','confirmed','in_house') AND
+            (a.ends_on>? OR NOT EXISTS (SELECT 1 FROM reservation_moves m WHERE m.reservation_id=r.id))`,
         )
-        .get(id)
+        .get(id, localDay())
     )
       fail(
         "Reubica o cierra las reservas activas antes de inhabilitar la habitación.",
@@ -123,9 +125,19 @@ export function roomModule(db, admin) {
     transaction(db, () => {
       const difference = capacity - room.capacity;
       if (difference !== 0) {
-        const used = db.prepare(`SELECT DISTINCT a.unit_id,COALESCE(a.pax,r.pax) AS pax FROM allocations a
+        const used = db.prepare(`SELECT DISTINCT a.unit_id,COALESCE(a.pax,r.pax) +
+          (SELECT COUNT(*) FROM guests g WHERE g.reservation_id=r.id AND g.unit_id=a.unit_id) AS pax FROM allocations a
           JOIN units u ON u.id=a.unit_id JOIN reservations r ON r.id=a.reservation_id
-          WHERE u.room_id=? AND r.status<>'cancelled' AND r.check_out>?`).all(id, localDay());
+          WHERE u.room_id=:room AND r.status<>'cancelled' AND EXISTS (
+            SELECT 1 FROM reservation_occupancy o WHERE o.reservation_id=r.id AND o.unit_id=u.id
+              AND o.extra=0 AND o.starts_on<o.ends_on AND o.ends_on>:day)
+          UNION ALL SELECT u.id,r.pax FROM reservation_occupancy o JOIN units u ON u.id=o.unit_id
+          JOIN reservations r ON r.id=o.reservation_id
+          WHERE u.room_id=:room AND r.status<>'cancelled' AND o.extra=0 AND o.ends_on>:day AND o.starts_on<o.ends_on
+            AND EXISTS (SELECT 1 FROM reservation_moves m WHERE m.reservation_id=r.id AND m.day=o.starts_on AND m.unit_id=u.id)
+          UNION ALL SELECT u.id,1 FROM guests g JOIN units u ON u.id=g.unit_id
+          JOIN reservations r ON r.id=g.reservation_id
+          WHERE u.room_id=:room AND r.status<>'cancelled' AND r.check_out>:day`).all({ room: id, day: localDay() });
         if (room.type === "private") {
           if (used.some((row) => row.pax > capacity))
             fail("La nueva capacidad es menor que la de una reserva actual o futura.", 409);

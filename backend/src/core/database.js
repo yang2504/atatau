@@ -116,6 +116,27 @@ export function openDatabase(
       db.exec("PRAGMA user_version = 13");
     });
   }
+  if (db.prepare("PRAGMA user_version").get().user_version < 14) {
+    transaction(db, () => {
+      if (db.prepare("PRAGMA user_version").get().user_version >= 14) return;
+      db.exec(readFileSync(new URL("./014-additional-guests.sql", import.meta.url), "utf8"));
+      db.exec("PRAGMA user_version = 14");
+    });
+  }
+  if (db.prepare("PRAGMA user_version").get().user_version < 15) {
+    transaction(db, () => {
+      if (db.prepare("PRAGMA user_version").get().user_version >= 15) return;
+      db.exec(readFileSync(new URL("./015-room-transfers.sql", import.meta.url), "utf8"));
+      db.exec("PRAGMA user_version = 15");
+    });
+  }
+  if (db.prepare("PRAGMA user_version").get().user_version < 16) {
+    transaction(db, () => {
+      if (db.prepare("PRAGMA user_version").get().user_version >= 16) return;
+      db.exec(readFileSync(new URL("./016-pub-photos-credit.sql", import.meta.url), "utf8"));
+      db.exec("PRAGMA user_version = 16");
+    });
+  }
   db.prepare(
     "INSERT OR IGNORE INTO platforms (id,name,active) VALUES (1,'Sin reserva / directo',1),(2,'Booking',1),(3,'Hostelworld',1)",
   ).run();

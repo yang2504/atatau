@@ -20,8 +20,11 @@ export function Folios({
   );
   const roomsById = new Map(data.rooms.map((room) => [room.id, room]));
   const roomsByFolio = new Map(data.folios.map((folio) => {
-    const assignments = byId.get(folio.reservation_id)?.room_assignments ?? [];
-    const ids = assignments.length ? assignments.map((item) => item.room_id) : [folio.room_id];
+    const reservation = byId.get(folio.reservation_id);
+    const assignments = reservation?.room_assignments ?? [];
+    const ids = reservation?.moves.length ? data.rooms.filter((room) => room.units.some((unit) =>
+      reservation.occupancy.some((span) => span.unit_id === unit.id))).map((room) => room.id)
+      : assignments.length ? assignments.map((item) => item.room_id) : [folio.room_id];
     return [folio.id, ids.flatMap((id) => {
       const room = id === null ? undefined : roomsById.get(id);
       return room ? [room] : [];
@@ -34,7 +37,7 @@ export function Folios({
   };
   const matchesRoom = (folio: Folio, id: number) => folioRooms(folio).some((room) => room.id === id);
   const monthly = data.folios.filter((f) =>
-    (allMonths || (f.check_in.slice(0, 7) <= month && f.check_out > month + "-01") ||
+    (allMonths || ((f.joined_on ?? f.check_in).slice(0, 7) <= month && f.check_out > month + "-01") ||
       f.paid_months.includes(month) || f.service_months.includes(month)) &&
     (query.trim().replace(/^#/, "") === String(f.reservation_id) ||
       folioMatches(query, f, byId.get(f.reservation_id)) ||
@@ -126,7 +129,7 @@ export function Folios({
                   </td>
                   <td>{folioRooms(f).map((room) => room.name).join(" · ") || f.room_name || "Sin asignación"}</td>
                   <td>
-                    {shortDate(f.check_in, true)} → {shortDate(f.check_out, true)}
+                    {shortDate(f.joined_on ?? f.check_in, true)} → {shortDate(f.check_out, true)}
                   </td>
                   <td>
                     <span className={`tag ${f.status}`}>

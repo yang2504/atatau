@@ -3,14 +3,16 @@ import { localDay, paymentMethods, cardSurcharge } from "../core/charges.js";
 import { transaction } from "../core/database.js";
 import { audit, choice, date, fail, integer, text } from "../core/validation.js";
 import { canSeeSuperadmin } from "./users.js";
+import { currentTurn, turnFor } from "./shifts.js";
 
 const ledger = (where) => `WITH ledger AS (
   SELECT 'manual' AS source,id,day,kind,detail,base_cents,surcharge_cents,method,user_id,voided,cash_box,turn_id
   FROM cash_entries
   UNION ALL
-  SELECT 'folio',p.id,p.day,'income','Hoja #' || f.id || ' · ' || f.title,
-    p.amount_cents,p.surcharge_cents,p.method,p.user_id,p.voided,'petty',p.turn_id
+  SELECT 'folio',p.id,p.day,'income',CASE WHEN m.id IS NULL THEN 'Hoja #' ELSE 'Consumo Pub · Hoja #' END || f.id || ' · ' || f.title,
+    p.amount_cents,p.surcharge_cents,p.method,p.user_id,p.voided,CASE WHEN m.id IS NULL THEN 'petty' ELSE 'pub' END,p.turn_id
   FROM folio_payments p JOIN folios f ON f.id=p.folio_id
+  LEFT JOIN pop_movements m ON m.folio_service_id=p.service_id
   WHERE p.group_id IS NULL
   UNION ALL
   SELECT 'stay',leader.id,leader.day,'income','Cobro de hospedaje · Reserva #' || f.reservation_id,
@@ -20,11 +22,12 @@ const ledger = (where) => `WITH ledger AS (
   WHERE leader.group_id=leader.id
   UNION ALL
   SELECT 'refund',r.id,r.day,'expense','Reembolso · ' || r.reason,
-    r.amount_cents,0,p.method,r.user_id,0,'petty',r.turn_id
+    r.amount_cents,0,p.method,r.user_id,0,CASE WHEN m.id IS NULL THEN 'petty' ELSE 'pub' END,r.turn_id
   FROM folio_refunds r JOIN folio_payments p ON p.id=r.payment_id
+  LEFT JOIN pop_movements m ON m.folio_service_id=p.service_id
   UNION ALL
   SELECT 'pop',id,day,'income',detail,base_cents,surcharge_cents,method,user_id,0,'pub',turn_id
-  FROM pop_movements WHERE kind='sale'
+  FROM pop_movements WHERE kind='sale' AND folio_service_id IS NULL
 )
 SELECT ledger.source,ledger.id,ledger.day,ledger.kind,ledger.detail,ledger.base_cents,
   ledger.surcharge_cents,ledger.method,ledger.voided,ledger.cash_box,
@@ -50,8 +53,11 @@ export function cashModule(db, admin) {
     res.json(list.all(canSeeSuperadmin(req.user), cashBox(req.query.box), start, end));
   }
   router.get("/daily", (req, res) => {
-    if (req.user.role === "receptionist")
-      return res.json(listTurn.all(0, cashBox(req.query.box), req.user.turnId));
+    if (req.user.role === "receptionist") {
+      const box = cashBox(req.query.box);
+      const turn = currentTurn(db, req.user);
+      return res.json(turn?.id ? listTurn.all(0, box, turn.id) : []);
+    }
     const day = localDay();
     period(req, res, day, day + "T");
   });
@@ -61,17 +67,30 @@ export function cashModule(db, admin) {
   router.get("/turns", (req, res) => {
     const before = req.query.before === undefined ? Number.MAX_SAFE_INTEGER :
       integer(Number(req.query.before), "Turno", 1, Number.MAX_SAFE_INTEGER);
-    res.json(db.prepare(`SELECT ${turnColumns} FROM cash_turns t JOIN users u ON u.id=t.user_id
-      WHERE t.id<? AND (? OR t.user_id=?) ORDER BY t.id DESC LIMIT 50`)
+    res.json(db.prepare(`SELECT ${turnColumns},t.window_key FROM cash_turns t JOIN users u ON u.id=t.user_id
+      WHERE t.id<? AND (? OR t.user_id=?) AND (
+        EXISTS (SELECT 1 FROM cash_entries WHERE turn_id=t.id) OR
+        EXISTS (SELECT 1 FROM folio_payments WHERE turn_id=t.id) OR
+        EXISTS (SELECT 1 FROM pop_movements WHERE turn_id=t.id AND folio_service_id IS NULL) OR
+        EXISTS (SELECT 1 FROM folio_refunds WHERE turn_id=t.id)
+      ) ORDER BY t.id DESC LIMIT 50`)
       .all(new Date().toISOString(), canSeeSuperadmin(req.user), before,
         Number(req.user.role !== "receptionist"), req.user.id));
   });
   router.get("/turns/:id", (req, res) => {
-    const id = req.params.id === "current" ? req.user.turnId :
-      integer(Number(req.params.id), "Turno", 1, Number.MAX_SAFE_INTEGER);
     const full = canSeeSuperadmin(req.user);
     const box = cashBox(req.query.box);
-    const turn = db.prepare(`SELECT ${turnColumns} FROM cash_turns t JOIN users u ON u.id=t.user_id
+    if (req.params.id === "current") {
+      const turn = currentTurn(db, req.user);
+      return res.json(turn ? {
+        id: turn.id, started_at: turn.started_at, expires_at: turn.expires_at,
+        ended_at: null, author: turn.user_name, window_key: turn.window_key, refresh_at: turn.refresh_at ?? turn.expires_at,
+        entries: turn.id ? listTurn.all(full, box, turn.id) : [],
+      } : { id: null, started_at: null, expires_at: null, ended_at: null, author: req.user.name, window_key: null,
+        refresh_at: null, entries: [] });
+    }
+    const id = integer(Number(req.params.id), "Turno", 1, Number.MAX_SAFE_INTEGER);
+    const turn = db.prepare(`SELECT ${turnColumns},t.window_key FROM cash_turns t JOIN users u ON u.id=t.user_id
       WHERE t.id=? AND (? OR t.user_id=?)`)
       .get(new Date().toISOString(), full, id, Number(req.user.role !== "receptionist"), req.user.id);
     if (!turn) fail("Turno inexistente.", 404);
@@ -96,8 +115,9 @@ export function cashModule(db, admin) {
     const method = choice(req.body.method, paymentMethods, "Medio de pago");
     const surcharge = kind === "income" ? cardSurcharge(base, method) : 0;
     const id = transaction(db, () => {
+      const turnId = turnFor(db, req.user);
       const result = db.prepare(`INSERT INTO cash_entries(day,kind,detail,base_cents,surcharge_cents,method,user_id,cash_box,turn_id)
-        VALUES(?,?,?,?,?,?,?,?,?)`).run(day, kind, detail, base, surcharge, method, req.user.id, box, req.user.turnId);
+        VALUES(?,?,?,?,?,?,?,?,?)`).run(day, kind, detail, base, surcharge, method, req.user.id, box, turnId);
       const id = Number(result.lastInsertRowid);
       audit(db, req.user, "create", "cash_entry", id, null, findEntry.get(id));
       return id;

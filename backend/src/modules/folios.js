@@ -11,23 +11,25 @@ import {
 import { lodgingShare, MAX_NIGHTLY_CENTS, nightDates, nightRates } from "./lodging.js";
 import { paymentMethods, cardSurcharge, localDay } from "../core/charges.js";
 import { canSeeSuperadmin } from "./users.js";
+import { turnFor } from "./shifts.js";
 
 const folioQuery = `SELECT f.*, r.guest_name,r.pax,r.check_in,r.check_out,r.status,
   r.folio_mode,r.nightly_cents,r.arrival_time,p.name AS platform_name,
+  extra.joined_on,extra.unit_id AS extra_unit_id,extra.nightly_cents AS extra_nightly_cents,
   (SELECT COUNT(*) FROM guests g WHERE g.reservation_id=r.id AND g.id<f.guest_id) AS position
   FROM folios f JOIN reservations r ON r.id=f.reservation_id
-  JOIN platforms p ON p.id=r.platform_id`;
+  JOIN platforms p ON p.id=r.platform_id LEFT JOIN guests extra ON extra.id=f.guest_id`;
 const MAX_STAY_CENTS = MAX_NIGHTLY_CENTS * 366;
 
 function paymentDetails(body) {
   return { day: date(body.day), method: choice(body.method, paymentMethods, "Medio de pago") };
 }
 
-function insertPayment(db, user, folioId, row, { day, method }, amount, surcharge, groupId = null) {
+function insertPayment(db, user, folioId, row, { day, method }, amount, surcharge, groupId = null, turnId = turnFor(db, user)) {
   const result = db.prepare(`INSERT INTO folio_payments
     (folio_id,lodging_day,service_id,day,amount_cents,method,user_id,surcharge_cents,group_id,turn_id)
     VALUES(?,?,?,?,?,?,?,?,?,?)`).run(folioId, row.lodging_day, row.service_id, day,
-    amount, method, user.id, surcharge, groupId, user.turnId);
+    amount, method, user.id, surcharge, groupId, turnId);
   return Number(result.lastInsertRowid);
 }
 
@@ -60,20 +62,25 @@ function entries(db, folio, full = 0) {
     )
     .all(full, folio.id);
   const overrides = nightRates(db, folio.reservation_id);
-  for (const day of nightDates(folio.check_in, folio.check_out)) {
+  const extras = folio.guest_id === null ? db.prepare(
+    "SELECT joined_on,nightly_cents FROM guests WHERE reservation_id=? AND joined_on IS NOT NULL",
+  ).all(folio.reservation_id) : [];
+  for (const day of nightDates(folio.joined_on ?? folio.check_in, folio.check_out)) {
     const nightlyCents = overrides[day] ?? folio.nightly_cents;
-    if (nightlyCents === null) continue;
-    const total = lodgingShare(
-      nightlyCents,
+    const added = extras.filter((guest) => guest.joined_on <= day);
+    if (nightlyCents === null && !folio.joined_on && !added.length) continue;
+    const total = folio.extra_nightly_cents ?? (lodgingShare(
+      nightlyCents ?? 0,
       folio.pax,
       folio.guest_id === null ? null : folio.position,
-    );
+    ) + added.reduce((sum, guest) => sum + guest.nightly_cents, 0));
     rows.push({
         service_id: null,
         lodging_day: day,
         day,
         service: "Hospedaje",
-        detail: overrides[day] === undefined ? "1 noche" : "Noche de extensión",
+        detail: folio.joined_on ? "Huésped incorporado" : added.length ? `1 noche · incluye ${added.length} adicional(es)`
+          : overrides[day] === undefined ? "1 noche" : "Tarifa específica",
         total_cents: total,
         author: null,
     });
@@ -107,16 +114,36 @@ function entries(db, folio, full = 0) {
 }
 
 export function ensureReservationFolios(db, reservationId, mode, sharedTitle, user) {
-  if (db.prepare("SELECT 1 FROM folios WHERE reservation_id=? LIMIT 1").get(reservationId)) return;
   if (mode === "shared") {
+    if (db.prepare("SELECT 1 FROM folios WHERE reservation_id=? LIMIT 1").get(reservationId)) return;
     db.prepare("INSERT INTO folios(reservation_id,guest_id,title) VALUES(?,NULL,?)")
       .run(reservationId, sharedTitle);
-  } else {
-    db.prepare(`INSERT INTO folios(reservation_id,guest_id,title)
-      SELECT reservation_id,id,name FROM guests WHERE reservation_id=? ORDER BY id`).run(reservationId);
-  }
-  for (const folio of db.prepare("SELECT * FROM folios WHERE reservation_id=? ORDER BY id").all(reservationId))
+    const folio = db.prepare("SELECT * FROM folios WHERE reservation_id=?").get(reservationId);
     audit(db, user, "create", "folio", folio.id, null, folio);
+  } else {
+    const created = db.prepare(`INSERT INTO folios(reservation_id,guest_id,title)
+      SELECT g.reservation_id,g.id,g.name FROM guests g WHERE g.reservation_id=?
+        AND NOT EXISTS (SELECT 1 FROM folios f WHERE f.guest_id=g.id) ORDER BY g.id RETURNING *`).all(reservationId);
+    for (const folio of created) audit(db, user, "create", "folio", folio.id, null, folio);
+  }
+}
+
+export function setNightlyRates(db, reservation, start, end, rate) {
+  const folios = db.prepare(`${folioQuery} WHERE f.reservation_id=?`).all(reservation.id);
+  const update = db.prepare(`INSERT INTO reservation_night_rates(reservation_id,day,nightly_cents) VALUES(?,?,?)
+    ON CONFLICT(reservation_id,day) DO UPDATE SET nightly_cents=excluded.nightly_cents`);
+  const extras = db.prepare("SELECT joined_on,nightly_cents FROM guests WHERE reservation_id=? AND joined_on IS NOT NULL")
+    .all(reservation.id);
+  const paid = folios.flatMap((folio) => entries(db, folio).filter((row) => row.lodging_day && row.paid_cents > 0)
+    .map((row) => ({ folio, row })));
+  for (const day of nightDates(start, end)) {
+    const extra = extras.reduce((sum, guest) => sum + (guest.joined_on <= day ? guest.nightly_cents : 0), 0);
+    if (rate + extra > MAX_NIGHTLY_CENTS) fail("El total por noche supera el importe permitido.");
+    if (paid.some(({ folio, row }) => row.lodging_day === day && !folio.joined_on &&
+      row.paid_cents > (folio.guest_id === null ? rate + extra : lodgingShare(rate, folio.pax, folio.position))))
+      fail(`La tarifa del ${day} quedaría por debajo de lo abonado. Registra primero el reembolso correspondiente.`, 409);
+    update.run(reservation.id, day, rate);
+  }
 }
 
 export function recordStayPayment(db, reservationId, body, user, expectedBalance = null) {
@@ -132,13 +159,14 @@ export function recordStayPayment(db, reservationId, body, user, expectedBalance
     fail("El saldo del hospedaje cambió. Revisa la reserva antes de registrar el cobro.", 409);
   if (amount > balance) fail("El abono supera el saldo del hospedaje.", 409);
 
+  const turnId = turnFor(db, user);
   let groupId = null;
   let remaining = amount;
   for (const { folioId, row } of nights) {
     if (!remaining) break;
     const applied = Math.min(remaining, row.balance_cents);
     const id = insertPayment(db, user, folioId, row, details, applied,
-      groupId === null ? cardSurcharge(amount, details.method) : 0, groupId);
+      groupId === null ? cardSurcharge(amount, details.method) : 0, groupId, turnId);
     if (groupId === null) {
       groupId = id;
       db.prepare("UPDATE folio_payments SET group_id=? WHERE id=?").run(id, id);
@@ -171,6 +199,27 @@ function activePayment(db, folioId, id, group) {
 
 export function folioModule(db) {
   const router = Router();
+  router.patch("/:id/lodging-rate", (req, res) => {
+    transaction(db, () => {
+      const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
+      if (folio.status === "cancelled" || folio.joined_on) fail("Selecciona una hoja principal vigente.", 409);
+      const start = date(req.body.start);
+      const end = date(req.body.end);
+      if (start < folio.check_in || end > folio.check_out || end <= start)
+        fail("Elige un rango de noches dentro de la estadía.");
+      const rate = integer(req.body.nightly_cents, "Tarifa por noche", 0, MAX_NIGHTLY_CENTS);
+      const before = nightRates(db, folio.reservation_id);
+      const expected = req.body.expected_rates;
+      if (!expected || typeof expected !== "object" || Array.isArray(expected) ||
+          Object.keys(before).length !== Object.keys(expected).length ||
+          Object.entries(before).some(([day, value]) => expected[day] !== value) || folio.nightly_cents !== req.body.expected_base)
+        fail("Las tarifas cambiaron. Vuelve a abrir la hoja.", 409);
+      setNightlyRates(db, { ...folio, id: folio.reservation_id }, start, end, rate);
+      audit(db, req.user, "lodging_rate", "reservation", folio.reservation_id,
+        { night_rates: before }, { night_rates: nightRates(db, folio.reservation_id) });
+    });
+    res.json({ ok: true });
+  });
   router.get("/", (req, res) => {
     const rows = db.prepare(`
       SELECT listed.*,room.id AS room_id,room.name AS room_name,room.type AS room_type,
@@ -185,8 +234,8 @@ export function folioModule(db) {
         ) movement) AS paid_months
       FROM (${folioQuery}) listed
       LEFT JOIN rooms room ON room.id=(
-        SELECT u.room_id FROM allocations a JOIN units u ON u.id=a.unit_id
-        WHERE a.reservation_id=listed.reservation_id LIMIT 1
+        SELECT u.room_id FROM units u WHERE u.id=COALESCE(listed.extra_unit_id,
+          (SELECT a.unit_id FROM allocations a WHERE a.reservation_id=listed.reservation_id LIMIT 1))
       )
       WHERE listed.status<>'pending' OR EXISTS (
         SELECT 1 FROM allocations a WHERE a.reservation_id=listed.reservation_id AND a.pax IS NOT NULL
@@ -358,7 +407,7 @@ export function folioModule(db) {
       if (amount > available) fail("El reembolso supera lo que queda del cobro.", 409);
       const day = localDay();
       const refundId = Number(db.prepare(`INSERT INTO folio_refunds(payment_id,user_id,turn_id,day,amount_cents,reason)
-        VALUES(?,?,?,?,?,?)`).run(paymentId, req.user.id, req.user.turnId, day, amount, reason).lastInsertRowid);
+        VALUES(?,?,?,?,?,?)`).run(paymentId, req.user.id, turnFor(db, req.user), day, amount, reason).lastInsertRowid);
       const insert = db.prepare("INSERT INTO folio_refund_allocations(refund_id,payment_id,amount_cents) VALUES(?,?,?)");
       let remaining = amount;
       for (const item of payments) {
