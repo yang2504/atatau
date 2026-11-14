@@ -429,6 +429,8 @@ test("reservas, permisos y persistencia transaccional", async () => {
       name: "No permitido",
     }, "PATCH", receptionLogin.cookie)).status, 403);
 
+    assert.equal((await request(`/users/${receptionist.body.id}/password`,
+      { password: "otra-clave-ficticia" }, "PATCH", receptionLogin.cookie)).status, 403);
     const today = localDay();
     const manual = { day: today, kind: "income", detail: "Ingreso extra", method: "Tarjeta", base_cents: 1000 };
     const manualCard = await request("/cash", manual, "POST", receptionLogin.cookie);
@@ -995,6 +997,19 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.ok(!(await request("/cash/daily")).body.some((row) => row.source === "refund" && row.id === pubRefund.body.id));
     assert.equal((await request(snackPath, { name: listedSnack.name, price_cents: 1250, photo: null }, "PATCH")).status, 200);
     assert.equal((await request(snackPath + "/photo")).status, 404);
+    const passwordPath = `/users/${admin.body.id}/password`;
+    const replacement = { password: "nueva-clave-ficticia" };
+    assert.equal((await request(passwordPath, replacement, "PATCH", "")).status, 401);
+    assert.equal((await request(passwordPath, replacement, "PATCH", adminLogin.cookie)).status, 403);
+    assert.equal((await request(passwordPath, { password: "corta" }, "PATCH")).status, 400);
+    const reset = await request(passwordPath, replacement, "PATCH");
+    assert.equal(reset.status, 200);
+    assert.deepEqual(reset.body, { ok: true });
+    assert.equal((await request("/rooms", undefined, "GET", adminLogin.cookie)).status, 401);
+    assert.equal((await request("/auth/login", { username: "admin-demo", password: "clave-segura-prueba" }, "POST", "")).status, 401);
+    assert.equal((await request("/auth/login", { username: "admin-demo", ...replacement }, "POST", "")).status, 200);
+    assert.equal((await request("/users/1/password", { password: "otra-clave-del-superadmin" }, "PATCH")).status, 200);
+    assert.equal((await request("/rooms")).status, 401);
     assert.equal((await request("/auth/logout", {})).status, 200);
     assert.equal((await request("/rooms")).status, 401);
   } finally {

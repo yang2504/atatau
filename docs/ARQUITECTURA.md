@@ -64,6 +64,7 @@ Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "err
 | `POST /api/auth/setup` | Primer superadministrador; solo una vez |
 | `POST /api/auth/login`, `/logout` | Abrir/cerrar sesión |
 | `GET/POST /api/users`, `PATCH /api/users/:id` | Listar, crear, editar perfil y activar/desactivar con jerarquía de roles |
+| `PATCH /api/users/:id/password` | Cambiar la contraseña y revocar las sesiones de la cuenta. Solo superadministrador |
 | `GET/POST /api/rooms`, `PATCH /api/rooms/:id` | Consulta, alta, nombre y habilitación |
 | `GET/POST /api/reservations`, `PUT /api/reservations/:id` | Consulta con responsables de reserva, entrada y salida, alta y reemplazo validado |
 | `POST /api/reservations/:id/extend` | Agregar noches con una tarifa propia, previa comprobación de fechas y disponibilidad |

@@ -126,7 +126,7 @@ Las personas acompañantes sin nombre se guardan como `Acompañante 2`, etc. Fal
 
 Solo el rol superadministrador ve las cuentas y novedades de ese nivel. Los demás roles ven los movimientos compartidos necesarios para operar, con la identidad del superadministrador protegida. Administración puede editar su propio perfil y gestionar las cuentas de recepción.
 
-Nadie puede desactivar su propio usuario. La gestión de roles existentes y la recuperación o cambio de contraseñas quedan pendientes.
+Nadie puede desactivar su propio usuario. Solo el superadministrador puede cambiar contraseñas en **Configuración → Equipo de Atatau**. Al guardar, se cierran las sesiones de la cuenta actualizada. En el inicio de sesión, cualquier usuario puede mostrar u ocultar la contraseña que está escribiendo.
 
 ## Datos y respaldo
 

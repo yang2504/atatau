@@ -79,6 +79,7 @@ function Auth({
 }) {
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setBusy(true);
@@ -156,17 +157,24 @@ function Auth({
               maxLength={60}
             />
           </label>
-          <label>
-            Contraseña
+          <div className="auth-password">
+            <label htmlFor="login-password">Contraseña</label>
             <input
+              id="login-password"
               name="password"
-              type="password"
+              type={showPassword ? "text" : "password"}
               autoComplete={setup ? "new-password" : "current-password"}
               minLength={setup ? 10 : 1}
               maxLength={128}
               required
             />
-          </label>
+            <button type="button" className="icon-button" aria-controls="login-password"
+              aria-label="Mostrar contraseña" aria-pressed={showPassword}
+              title={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              onClick={() => setShowPassword((visible) => !visible)}>
+              <Icon name={showPassword ? "eye-off" : "eye"} size={19} />
+            </button>
+          </div>
           {setup && (
             <p className="small muted">
               Usa una contraseña de al menos 10 caracteres. El sistema guardará
@@ -587,7 +595,7 @@ export default function App() {
           {page === "breakfast" && <Breakfast reservations={data.reservations} />}
           {page === "pop" && <Pop user={user} data={data} onSaved={onSaved} />}
           {page === "settings" && user.role !== "receptionist" && (
-            <Settings data={data} user={user} onSaved={onSaved} onUserChanged={setUser} />
+            <Settings data={data} user={user} onSaved={onSaved} onUserChanged={setUser} onPasswordChanged={logout} />
           )}
           {page === "folios" && (
             <Folios data={data} onOpen={setSelectedFolio} />

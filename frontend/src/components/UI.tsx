@@ -2,6 +2,8 @@ import { useEffect, useId, useRef, type ReactNode } from "react";
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   const paths: Record<string, ReactNode> = {
     search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></>,
+    eye: <><path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6Z" /><circle cx="12" cy="12" r="2.5" /></>,
+    "eye-off": <><path d="m3 3 18 18M10 6.2A12 12 0 0 1 12 6c6.4 0 10 6 10 6a15 15 0 0 1-3 3.4M6 7.8A16 16 0 0 0 2 12s3.6 6 10 6a11 11 0 0 0 4.5-1" /></>,
     person: <><circle cx="12" cy="7" r="3" /><path d="M5 21v-2a7 7 0 0114 0v2" /></>,
     cash: <><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="12" cy="12" r="3" /><path d="M6 12h1m10 0h1" /></>,
     box: <path d="m3 7 9-4 9 4v10l-9 4-9-4V7l9 4 9-4m-9 4v10" />,

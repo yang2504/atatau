@@ -1,5 +1,11 @@
 # Cambios y decisiones importantes
 
+## 2026-11-14 — Cambio de contraseña y visibilidad al iniciar sesión
+
+- Solo el superadministrador puede cambiar contraseñas desde Equipo de Atatau. El cambio revoca las sesiones de la cuenta y registra la operación sin guardar la contraseña ni su hash en la auditoría.
+- El inicio de sesión muestra un botón para revelar u ocultar la contraseña escrita. La contraseña comienza oculta.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome con datos ficticios se verificaron el botón por teclado en pantalla móvil, la confirmación de contraseña y la visibilidad del permiso por rol. Queda pendiente actualizar la instalación de recepción.
+
 ## 2026-11-13 — Turnos de caja independientes de la sesión
 
 - Abrir la aplicación, volver a iniciar sesión y consultar Caja ya no crean turnos. El primer movimiento de caja usa las horas programadas y registra el turno en la misma transacción. Los cambios de horario no reabren turnos cerrados ni generan un turno programado que se superponga a uno anterior.

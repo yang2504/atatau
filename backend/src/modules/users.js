@@ -35,12 +35,16 @@ function verify(password, stored) {
     Buffer.from(digest, "hex"),
   );
 }
+function newPassword(value) {
+  const password = text(value, "Contraseña", 128);
+  if (password.length < 10)
+    fail("La contraseña debe tener al menos 10 caracteres.");
+  return password;
+}
 function newUser(db, body, role) {
   const name = text(body.name, "Nombre", 100);
   const username = usernameValue(body.username);
-  const password = text(body.password, "Contraseña", 128);
-  if (password.length < 10)
-    fail("La contraseña debe tener al menos 10 caracteres.");
+  const password = newPassword(body.password);
   if (db.prepare("SELECT id FROM users WHERE username=?").get(username))
     fail("Ese usuario ya existe.", 409);
   const id = Number(
@@ -168,6 +172,21 @@ export function userModule(db) {
       return created;
     });
     res.status(201).json(user);
+  });
+  management.patch("/:id/password", (req, res) => {
+    if (req.user.role !== "superadmin")
+      fail("Solo el superadministrador puede cambiar contraseñas.", 403);
+    const id = integer(Number(req.params.id), "Usuario");
+    const password = newPassword(req.body.password);
+    transaction(db, () => {
+      if (!db.prepare("UPDATE users SET password_hash=? WHERE id=?").run(hash(password), id).changes)
+        fail("Usuario inexistente.", 404);
+      audit(db, req.user, "change_password", "user", id);
+    });
+    for (const [token, session] of sessions)
+      if (session.id === id) sessions.delete(token);
+    if (id === req.user.id) res.clearCookie("atatau_session", { path: "/" });
+    res.json({ ok: true });
   });
   management.patch("/:id", (req, res) => {
     const id = integer(Number(req.params.id), "Usuario");
