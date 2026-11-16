@@ -738,11 +738,18 @@ small {
 .room-header svg {
   flex-shrink: 0;
 }
+.calendar-guide {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 12px 4px 20px;
+}
 .availability-guide {
-  margin: 10px 20px;
+  margin: 0;
   color: #52614c;
   font-size: 12px;
 }
+.calendar-expand { margin-inline-start: auto; }
 .room-header strong {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2341,6 +2348,15 @@ details[open] summary {
   outline-offset: -2px;
 }
 .calendar-page .page-footer { display: none; }
+.calendar-page .page-content { padding-top: 24px; }
+.calendar-page .page-heading { margin-bottom: 20px; }
+.calendar-page .stats { margin-bottom: 16px; }
+.calendar-page .stats[hidden] { display: none; }
+.calendar-page:has(.stats[hidden]) .page-content { padding-top: 12px; }
+.calendar-page:has(.stats[hidden]) .page-heading { margin-bottom: 12px; }
+.calendar-page:has(.stats[hidden]) .page-heading h1 { font-size: clamp(23px, 2.2vw, 27px); }
+.calendar-page:has(.stats[hidden]) .page-heading p { display: none; }
+.calendar-page:has(.stats[hidden]) .page-icon { width: 40px; height: 40px; }
 @media (min-width: 375px) and (min-height: 600px), (min-width: 801px) and (min-height: 540px) {
   .calendar-page {
     height: 100dvh;
@@ -2370,7 +2386,7 @@ details[open] summary {
   .calendar-page .page-heading,
   .calendar-page .stats,
   .calendar-page .calendar-toolbar,
-  .calendar-page .availability-guide,
+  .calendar-page .calendar-guide,
   .calendar-page .calendar-footer {
     flex-shrink: 0;
   }
@@ -2388,6 +2404,8 @@ details[open] summary {
 }
 @media (max-width: 650px) {
   .calendar-page { --calendar-room-width: 132px; }
+  .calendar-guide { padding: 2px 12px; }
+  .calendar-expand span { display: none; }
   .calendar-page .page-heading { flex-direction: row; align-items: center; gap: 9px; }
   .calendar-page .page-heading-main { gap: 8px; }
   .calendar-page .page-heading p,
@@ -2421,6 +2439,9 @@ details[open] summary {
 @media (max-width: 374px) {
   .calendar-page .stat-copy { display: block; }
   .calendar-page .stat-icon { display: none; }
+}
+@media (max-width: 500px) {
+  .calendar-page:has(.stats[hidden]) .page-icon { width: 36px; height: 36px; }
 }
 .calendar-dates { position: sticky; top: 0; z-index: 5; background: white; }
 .resource-label { position: sticky; left: 0; z-index: 1; background: white; }

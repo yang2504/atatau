@@ -14,6 +14,8 @@ import { occupiedUnits } from "../../lib/lodging";
 
 export function Calendar({
   data,
+  expanded,
+  onToggleExpanded,
   onCreate,
   onEdit,
   onExtend,
@@ -22,6 +24,8 @@ export function Calendar({
   onRooms,
 }: {
   data: Data;
+  expanded: boolean;
+  onToggleExpanded: () => void;
   onCreate: (draft: Draft) => void;
   onEdit: (r: Reservation) => void;
   onExtend: (r: Reservation) => void;
@@ -120,6 +124,19 @@ export function Calendar({
         </select>
         </div>
       </div>
+      <div className="calendar-guide">
+        {rooms.length > 0 && <p className="availability-guide">
+          Cada fila de dormitorio es una cama. El contador indica camas libres / total por día.
+        </p>}
+        <button type="button" className="button secondary compact calendar-expand"
+          aria-label={expanded ? "Mostrar resumen" : "Ampliar calendario"}
+          aria-controls="calendar-summary" aria-expanded={!expanded}
+          title={expanded ? "Mostrar resumen" : "Ampliar calendario"}
+          onClick={onToggleExpanded}>
+          <Icon name={expanded ? "shrink" : "expand"} size={17} />
+          <span>{expanded ? "Ver resumen" : "Ampliar"}</span>
+        </button>
+      </div>
       {!rooms.length ? (
         <Empty
           title={
@@ -142,9 +159,6 @@ export function Calendar({
         </Empty>
       ) : (
         <>
-          <p className="availability-guide">
-            Cada fila de dormitorio es una cama. El contador indica camas libres / total por día.
-          </p>
           <div className="calendar-scroll" role="region" aria-label="Cuadrícula del calendario" tabIndex={0}>
             <div className={`calendar-grid days-${range}`}>
               <div className="calendar-dates">

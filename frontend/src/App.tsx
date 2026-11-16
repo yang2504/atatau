@@ -202,6 +202,7 @@ export default function App() {
   const [selectedFolio, setSelectedFolio] = useState<Folio | null>(null);
   const [folioReservation, setFolioReservation] = useState<Reservation | null>(null);
   const [summary, setSummary] = useState<"pax" | "free" | "arrivals" | "departures" | null>(null);
+  const [calendarExpanded, setCalendarExpanded] = useState(false);
   const [extending, setExtending] = useState<Reservation | null>(null);
   const [moving, setMoving] = useState<{ reservation: Reservation; extend: boolean } | null>(null);
   const [editor, setEditor] = useState<{
@@ -457,7 +458,7 @@ export default function App() {
           <ErrorBox message={error} />
           {page === "calendar" && (
             <>
-              <div className="stats">
+              <div className="stats" id="calendar-summary" hidden={calendarExpanded}>
                 <Stat
                   label={summaryTitle.pax}
                   value={String(pax)}
@@ -489,6 +490,8 @@ export default function App() {
               </div>
               <Calendar
                 data={data}
+                expanded={calendarExpanded}
+                onToggleExpanded={() => setCalendarExpanded((current) => !current)}
                 onCreate={(draft) => setEditor({ draft })}
                 onEdit={(reservation) => setEditor({ reservation })}
                 onExtend={setExtending}

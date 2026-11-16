@@ -1,5 +1,10 @@
 # Cambios y decisiones importantes
 
+## 2026-11-16 — Calendario ampliable
+
+- Se redujeron los espacios del encabezado para mostrar más filas. El botón **Ampliar** oculta el resumen inicial y **Ver resumen** lo recupera. Se usan los mismos filtros, fechas y cuadrícula en ambas vistas para conservar la búsqueda y la posición cuando el espacio lo permite.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome con datos ficticios se comprobó el cambio de vista con teclado, las dimensiones en escritorio y móvil y el desplazamiento independiente de los modales. Queda pendiente actualizar la instalación de recepción.
+
 ## 2026-11-16 — Diseño de recepción y reporte de desayunos
 
 - Las referencias visuales se aplicaron a la navegación, encabezados, tarjetas de PAX, plazas, llegadas y salidas, controles, tablas y formularios compartidos. Las tarjetas del calendario siguen abriendo sus detalles. La cuadrícula conserva la disponibilidad, sus reservas y el resaltado de hoy.
