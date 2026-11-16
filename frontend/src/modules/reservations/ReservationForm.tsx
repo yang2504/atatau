@@ -56,9 +56,10 @@ export function ReservationForm({
     [busy, setBusy] = useState(false);
   const room = data.rooms.find((room) => room.id === roomId);
   const [platformId, setPlatformId] = useState(r?.platform_id ?? 1);
+  const [status, setStatus] = useState(r?.status === "pending" ? "pending" : "confirmed");
   const [breakfast, setBreakfast] = useState(r?.breakfast ?? 0);
   const [collectOnArrival, setCollectOnArrival] = useState(false);
-  const [arrivalMethod, setArrivalMethod] = useState("Efectivo");
+  const [arrivalMethod, setArrivalMethod] = useState(r ? "Efectivo" : "");
   const [advanceAmount, setAdvanceAmount] = useState("");
   const [advanceMethod, setAdvanceMethod] = useState("Efectivo");
   const [saved, setSaved] = useState(false);
@@ -84,6 +85,8 @@ export function ReservationForm({
     : rateOverride ?? (!r && suggested ? (suggested.nightly_cents / 100).toFixed(2) : "");
   const nights = end ? daysBetween(start, end) : 0;
   const canArrive = r?.status === "confirmed" || r?.status === "pending";
+  const directToday = !r && platformId === 1 && start === today();
+  const registerNow = directToday && status === "confirmed";
   const priced = /^\d{1,7}([.,]\d{1,2})?$/.test(rate) && (!group || cents(rate) <= 100_000_000);
   const total = lodgingTotal(r, start, end, priced ? cents(rate) : 0);
   const lodgingDue = Math.max(0, total - (r?.lodging_paid_cents ?? 0));
@@ -107,7 +110,7 @@ export function ReservationForm({
       (room.type === "private" ? item.unit_ids.length === 1 : item.unit_ids.length === item.pax) &&
       item.unit_ids.every((id) => !conflicting.has(id) && room.units.some((unit) => unit.id === id && unit.active)));
   });
-  const groupAdvanceInvalid = group && !r && advanceAmount.trim() !== "" &&
+  const groupAdvanceInvalid = group && !r && !registerNow && advanceAmount.trim() !== "" &&
     (advanceBase === 0 || advanceBase > lodgingDue);
 
   function chooseGroup() {
@@ -143,7 +146,6 @@ export function ReservationForm({
     setBusy(true);
     setError("");
     const form = new FormData(e.currentTarget);
-    const status = form.get("status");
     try {
       await api(
         `/reservations${r ? `/${r.id}` : ""}`,
@@ -167,10 +169,10 @@ export function ReservationForm({
           unit_ids: group ? undefined : units,
           room_assignments: group ? assignments : undefined,
           comments: form.get("comments"),
-          check_in_payment: operation === "in_house" && collect
+          check_in_payment: (registerNow || operation === "in_house") && collect
             ? { method: arrivalMethod, amount_cents: lodgingDue }
             : undefined,
-          advance_payment: operation === "advance" || (group && !r && advanceBase > 0)
+          advance_payment: operation === "advance" || (group && !r && !registerNow && advanceBase > 0)
             ? { method: advanceMethod, amount_cents: advanceBase, expected_balance_cents: lodgingDue }
             : undefined,
         },
@@ -354,11 +356,11 @@ export function ReservationForm({
             </select>
           </label>
           <label>
-            Estado
-            <select name="status" defaultValue={r?.status === "pending" ? "pending" : "confirmed"} disabled={r?.status === "cancelled"}>
+            {directToday ? "¿El huésped ya llegó?" : "Estado"}
+            <select name="status" value={status} onChange={(e) => setStatus(e.target.value)} disabled={r?.status === "cancelled"}>
               {["confirmed", "pending"].map((key) => (
                 <option key={key} value={key}>
-                  {statusNames[key]}
+                  {directToday ? key === "confirmed" ? "Sí, registrar entrada" : "Aún no, guardar pendiente" : statusNames[key]}
                 </option>
               ))}
             </select>
@@ -475,16 +477,17 @@ export function ReservationForm({
             maxLength={2000}
           />
         </label>
-        {canArrive && lodgingDue > 0 && (
+        {(canArrive || registerNow) && lodgingDue > 0 && (
           <fieldset className="form-stack">
-            <legend>Cobro al llegar</legend>
+            <legend>{registerNow ? "Cobro al llegar (opcional)" : "Cobro al llegar"}</legend>
             <label className="bed-option">
               <input type="checkbox" checked={collectOnArrival} onChange={(e) => setCollectOnArrival(e.target.checked)} />
               Registrar el pago completo del hospedaje · {money(lodgingDue)}
             </label>
             {collect && <>
               <label>Medio de pago al llegar
-                <select value={arrivalMethod} onChange={(e) => setArrivalMethod(e.target.value)}>
+                <select value={arrivalMethod} onChange={(e) => setArrivalMethod(e.target.value)} required>
+                  {!r && <option value="" disabled>Seleccionar medio de pago</option>}
                   {paymentMethods.map((method) => <option key={method}>{method}</option>)}
                 </select>
               </label>
@@ -492,7 +495,7 @@ export function ReservationForm({
             </>}
           </fieldset>
         )}
-        {group && !r && <fieldset className="form-stack group-advance">
+        {group && !r && !registerNow && <fieldset className="form-stack group-advance">
           <legend>Adelanto de reserva (opcional)</legend>
           <div className="form-grid">
             <label>Importe del adelanto (Bs)
@@ -514,10 +517,11 @@ export function ReservationForm({
           </div>
           {priced && nights > 0 && <dl>
             <div><dt>Hospedaje total</dt><dd>{money(total)}</dd></div>
-            {!!(r?.lodging_paid_cents || (!r && advanceBase)) && <div>
-              <dt>{r ? "Abonado" : `Adelanto · ${advanceMethod}`}</dt><dd>{money(r?.lodging_paid_cents ?? advanceBase)}</dd>
+            {!!(r?.lodging_paid_cents || (!r && (registerNow ? collect : advanceBase))) && <div>
+              <dt>{r ? "Abonado" : registerNow ? "Pago al llegar" : `Adelanto · ${advanceMethod}`}</dt>
+              <dd>{money(r?.lodging_paid_cents ?? (registerNow ? lodgingDue : advanceBase))}</dd>
             </div>}
-            <div><dt>Saldo de hospedaje</dt><dd>{money(Math.max(0, lodgingDue - (r ? 0 : advanceBase)))}</dd></div>
+            <div><dt>Saldo de hospedaje</dt><dd>{money(Math.max(0, lodgingDue - (r ? 0 : registerNow ? (collect ? lodgingDue : 0) : advanceBase)))}</dd></div>
           </dl>}
         </section>}
         <div className="modal-actions">
@@ -525,7 +529,8 @@ export function ReservationForm({
             Cerrar
           </button>
           <button disabled={busy || (group ? !groupReady || !priced || groupAdvanceInvalid : !room) || !end || r?.status === "cancelled"} className="button primary">
-            {busy ? "Guardando…" : r ? "Guardar cambios" : group ? "Crear reserva de grupo" : "Crear reserva"}
+            {busy ? "Guardando…" : r ? "Guardar cambios" : registerNow ? (collect ? "Registrar entrada y cobro" : "Registrar entrada")
+              : group ? "Crear reserva de grupo" : "Crear reserva"}
           </button>
           {canArrive && <button className="button secondary" value="in_house" disabled={busy || (group && !groupReady)}>
             {r?.status === "pending" ? "Confirmar y registrar llegada" : "Registrar llegada"}

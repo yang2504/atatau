@@ -9,6 +9,9 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
     box: <path d="m3 7 9-4 9 4v10l-9 4-9-4V7l9 4 9-4m-9 4v10" />,
     clipboard: <><rect x="5" y="5" width="14" height="16" rx="2" /><rect x="9" y="3" width="6" height="4" rx="1" fill="white" /><path d="m8 13 2 2 5-5m-7 8h8" /></>,
     coffee: <><path d="M4 8h12v5a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V8Zm12 1h2a2.5 2.5 0 0 1 0 5h-2M3 21h16M8 3v2m4-2v2" /></>,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    exchange: <path d="M3 8h17m-4-4 4 4-4 4M21 16H4m4-4-4 4 4 4" />,
+    arrival: <path d="M14 4h6v16h-6M3 12h12m-4-4 4 4-4 4" />,
     receipt: <><path d="M5 3h14v18l-3-2-4 2-4-2-3 2V3Zm4 5h6m-6 4h6m-6 4h3" /></>,
     chat: <path d="M20 11a7 7 0 0 1-7 7H9l-5 3 1.5-5A7 7 0 0 1 10 4h3a7 7 0 0 1 7 7Zm-11 0h6" />,
     card: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M3 10h18M7 15h4" /></>,
@@ -101,7 +104,11 @@ export function Modal({
       ref={ref}
       className={[wide && "wide-dialog", className].filter(Boolean).join(" ") || undefined}
       aria-labelledby={titleId}
-      onCancel={onClose}
+      onCancel={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }}
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}

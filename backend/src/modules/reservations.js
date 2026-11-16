@@ -306,22 +306,27 @@ export function saveReservation(db, body, user, id = null, extension = false) {
       .get(platformId);
     if (!platform || (!platform.active && previous?.platform_id !== platformId))
       fail("Selecciona una plataforma habilitada.");
-    const status = choice(
+    const requestedStatus = choice(
       body.status,
       ["pending", "confirmed", "in_house", "checked_out", "cancelled"],
       "Estado",
     );
+    const operationDay = localDay();
+    const directToday = !previous && platformId === 1 && start === operationDay;
+    const status = directToday && requestedStatus === "confirmed" ? "in_house" : requestedStatus;
     const arrivalPayment = body.check_in_payment;
     if (arrivalPayment != null && (status !== "in_house" ||
-        !["pending", "confirmed"].includes(previous?.status)))
+        !(directToday || ["pending", "confirmed"].includes(previous?.status))))
       fail("El cobro de la estadía solo se registra al confirmar la llegada.", 409);
     const advance = body.advance_payment;
     const canAdvance = group
-      ? !previous && ["pending", "confirmed"].includes(status)
+      ? !previous && ["pending", "confirmed"].includes(requestedStatus)
       : previous?.status === "pending" && status === "pending";
     if (advance != null && !canAdvance)
       fail(group ? "Registra nuevos abonos desde la hoja de consumo del grupo."
         : "El adelanto se registra en una reserva pendiente.", 409);
+    if (advance != null && arrivalPayment != null)
+      fail("Registra un solo cobro al crear la reserva.", 409);
     const breakfast = integer(body.breakfast ?? previous?.breakfast ?? 0, "Desayuno", 0, 1);
     const mode = choice(
       body.folio_mode,
@@ -555,11 +560,11 @@ export function saveReservation(db, body, user, id = null, extension = false) {
     if (!previous && checkingIn) audit(db, user, "check_in", "reservation", id, null, after);
     if (!previous && checkingOut) audit(db, user, "check_out", "reservation", id, null, after);
     if (arrivalPayment != null) {
-      recordStayPayment(db, id, { ...arrivalPayment, day: localDay() }, user, arrivalPayment.amount_cents);
+      recordStayPayment(db, id, { ...arrivalPayment, day: operationDay }, user, arrivalPayment.amount_cents);
     }
     if (advance != null) {
       const expected = integer(advance.expected_balance_cents, "Saldo esperado", 1, Number.MAX_SAFE_INTEGER);
-      recordStayPayment(db, id, { ...advance, day: localDay() }, user, expected);
+      recordStayPayment(db, id, { ...advance, day: operationDay }, user, expected);
     }
     return { id };
   });

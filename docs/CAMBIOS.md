@@ -1,5 +1,29 @@
 # Cambios y decisiones importantes
 
+## 2026-11-16 — Diseño de recepción y reporte de desayunos
+
+- Las referencias visuales se aplicaron a la navegación, encabezados, tarjetas de PAX, plazas, llegadas y salidas, controles, tablas y formularios compartidos. Las tarjetas del calendario siguen abriendo sus detalles. La cuadrícula conserva la disponibilidad, sus reservas y el resaltado de hoy.
+- Desayunos comparte el diseño de las tarjetas y agrupa los controles de fecha. El reporte muestra los dos totales existentes y la habitación, la persona, la reserva y el estado.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome con datos ficticios se comprobaron los conteos, el cambio de fecha, la vista móvil, los permisos de navegación y el resaltado del día actual. Queda pendiente actualizar la instalación de recepción.
+
+## 2026-11-16 — Desplazamiento del calendario y de los modales
+
+- El calendario ocupa el espacio disponible. Las filas y fechas se recorren dentro de la cuadrícula con rueda, barra o teclado. El encabezado de fechas y la columna de habitaciones permanecen visibles. En ventanas muy pequeñas la página puede desplazarse para mantener accesibles los controles y las filas.
+- Se corrigió el desborde de las etiquetas de disponibilidad para lectores de pantalla. Los modales tienen desplazamiento propio y conservan la posición del fondo, incluso al alcanzar el final del formulario.
+- En Chrome con una base temporal se probaron el desplazamiento horizontal y vertical, el teclado y la conservación de la posición al cerrar modales cortos y largos. Queda pendiente actualizar la instalación de recepción.
+
+## 2026-11-16 — Entrada directa en un paso
+
+- Se retiraron del inicio los paneles **En la agenda de hoy** y **Entre turnos**. El acceso desde los contadores de llegadas y salidas, y desde Novedades, se conserva.
+- Una reserva nueva del canal directo con entrada en la fecha actual de Bolivia registra la llegada al guardarse como confirmada. El cobro es opcional y se guarda en la misma transacción. El formulario permite guardar como pendiente si el huésped aún no llegó.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome se comprobó el acceso a llegadas y el registro de entrada y cobro por QR con datos ficticios. Queda pendiente actualizar la instalación de recepción.
+
+## 2026-11-16 — Abonos y reembolsos en la hoja de consumo
+
+- Recepción, administración y superadministración pueden editar abonos activos sin reembolsos y registrar devoluciones parciales o totales. Cambiar solo el medio de pago conserva el turno, el responsable original y las partidas aplicadas. Auditoría registra quién hizo la corrección.
+- La hoja usa letra más grande y mayor contraste. **Registrar abono**, **Editar abono** y **Reembolsar** abren formularios con el importe, el medio de pago y el saldo pertinente. Los nuevos abonos requieren elegir explícitamente el medio de pago.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome se comprobó con una cuenta ficticia de recepción el registro, la corrección de efectivo a QR y el reembolso parcial en escritorio y móvil. Queda pendiente actualizar la instalación de recepción.
+
 ## 2026-11-14 — Cambio de contraseña y visibilidad al iniciar sesión
 
 - Solo el superadministrador puede cambiar contraseñas desde Equipo de Atatau. El cambio revoca las sesiones de la cuenta y registra la operación sin guardar la contraseña ni su hash en la auditoría.

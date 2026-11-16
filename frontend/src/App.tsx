@@ -416,7 +416,7 @@ export default function App() {
           </div>
         </div>
       </aside>
-      <main className="main">
+      <main className={page === "calendar" ? "main calendar-page" : "main"}>
         <header className="topbar">
           <div className="breadcrumb">
             {section.title} <Icon name="chevron" size={13} /> <strong>{title}</strong>
@@ -441,7 +441,6 @@ export default function App() {
             <div className="page-heading-main">
               <span className="page-icon"><Icon name={pageIcon} size={25} /></span>
               <div>
-                <span className="eyebrow">{section.title}</span>
                 <h1>{title}</h1>
                 <p>{descriptions[page]}</p>
               </div>
@@ -477,7 +476,7 @@ export default function App() {
                   label={summaryTitle.arrivals}
                   value={String(arrivals.length).padStart(2, "0")}
                   detail="reservas para hoy"
-                  icon="calendar"
+                  icon="arrival"
                   onClick={() => setSummary("arrivals")}
                 />
                 <Stat
@@ -497,90 +496,6 @@ export default function App() {
                 onMove={move}
                 onRooms={() => setPage("rooms")}
               />
-              <div className="dashboard-bottom">
-                <section className="panel arrivals-panel">
-                  <div className="section-title">
-                    <h2>
-                      En la agenda de hoy{" "}
-                      <span className="count">
-                        {arrivals.length + departures.length}
-                      </span>
-                    </h2>
-                    <button
-                      className="text-button"
-                      onClick={() => setPage("reservations")}
-                    >
-                      Ver reservas <Icon name="arrow" size={16} />
-                    </button>
-                  </div>
-                  {!arrivals.length && !departures.length ? (
-                    <p className="quiet-state">
-                      Sin llegadas ni salidas pendientes. Un buen momento para
-                      revisar las próximas reservas.
-                    </p>
-                  ) : (
-                    <div className="agenda-list">
-                      {[...arrivals, ...departures].map((r) => (
-                        <button
-                          key={r.id}
-                          onClick={() => setEditor({ reservation: r })}
-                        >
-                          <span className="avatar small-avatar">
-                            {r.guest_name[0]}
-                          </span>
-                          <span>
-                            <strong>{r.guest_name}</strong>
-                            <small>
-                              {r.platform_name} · {r.pax} PAX
-                            </small>
-                          </span>
-                          <span
-                            className={`tag ${r.status === "pending" ? "pending" : r.check_in === day ? "confirmed" : "checked_out"}`}
-                          >
-                            {r.status === "pending" ? "Llegada · Por confirmar" : r.check_in === day ? "Llegada" : "Salida"}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </section>
-                <section className="panel recent-notes">
-                  <div className="section-title">
-                    <h2>Entre turnos</h2>
-                    <button
-                      className="text-button"
-                      onClick={() => setPage("notes")}
-                    >
-                      Ver todas <Icon name="arrow" size={16} />
-                    </button>
-                  </div>
-                  {pending.length ? (
-                    pending.slice(0, 2).map((n) => (
-                      <button
-                        key={n.id}
-                        className="note-preview"
-                        onClick={() => setPage("notes")}
-                      >
-                        <span className={`note-marker ${n.category}`} />
-                        <span>
-                          <strong>
-                            {n.room_name ||
-                              n.guest_name ||
-                              "Novedad de recepción"}
-                          </strong>
-                          <small>{n.body}</small>
-                        </span>
-                        <Icon name="chevron" size={15} />
-                      </button>
-                    ))
-                  ) : (
-                    <p className="quiet-state">
-                      Sin novedades pendientes. Deja una nota para el siguiente
-                      turno cuando la necesites.
-                    </p>
-                  )}
-                </section>
-              </div>
             </>
           )}
           {page === "rooms" && (
@@ -819,14 +734,14 @@ function Stat({
   onClick: () => void;
 }) {
   return (
-    <button type="button" className="panel stat" onClick={onClick} aria-haspopup="dialog">
-      <span className="stat-copy">
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>{detail}</small>
+    <button type="button" className="panel metric-card stat" onClick={onClick} aria-haspopup="dialog">
+      <span className="metric-icon stat-icon">
+        <Icon name={icon} size={24} />
       </span>
-      <span className="stat-icon">
-        <Icon name={icon} size={22} />
+      <span className="stat-copy">
+        <span className="metric-label">{label}</span>
+        <strong className="metric-value">{value}</strong>
+        <small>{detail}</small>
       </span>
     </button>
   );

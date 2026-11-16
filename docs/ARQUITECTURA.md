@@ -66,7 +66,7 @@ Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "err
 | `GET/POST /api/users`, `PATCH /api/users/:id` | Listar, crear, editar perfil y activar/desactivar con jerarquía de roles |
 | `PATCH /api/users/:id/password` | Cambiar la contraseña y revocar las sesiones de la cuenta. Solo superadministrador |
 | `GET/POST /api/rooms`, `PATCH /api/rooms/:id` | Consulta, alta, nombre y habilitación |
-| `GET/POST /api/reservations`, `PUT /api/reservations/:id` | Consulta con responsables de reserva, entrada y salida, alta y reemplazo validado |
+| `GET/POST /api/reservations`, `PUT /api/reservations/:id` | Consulta con responsables, alta y reemplazo validado. Un alta confirmada del canal directo con entrada hoy en Bolivia registra la llegada y el cobro opcional en la misma transacción |
 | `POST /api/reservations/:id/extend` | Agregar noches con una tarifa propia, previa comprobación de fechas y disponibilidad |
 | `GET /api/reservations/breakfast?day=AAAA-MM-DD` | Personas con desayuno para la fecha de servicio, con su habitación y estado |
 | `GET/POST /api/platforms`, `PATCH /api/platforms/:id` | Canales e inhabilitación |
@@ -84,6 +84,8 @@ Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "err
 | `GET /api/bcb/usd` | Cotización oficial, vigencia, disponibilidad y tipo de cambio aplicable a tarifas |
 | `GET/PUT /api/lodging-exchange-rate` | Consultar y configurar el tipo de cambio de respaldo. Solo administración escribe |
 | `GET /api/audit` | Historial paginado de reservas, hojas y caja, solo administración |
+
+Todos los roles autenticados pueden editar abonos activos sin devoluciones y registrar reembolsos parciales o totales. Una edición del medio de pago conserva las aplicaciones, el responsable y el turno del cobro, y registra la corrección en auditoría. La anulación requiere permisos de administración.
 | `GET/POST /api/pop`, `PATCH /api/pop/:id` | Consultar catálogo y gestionarlo con permiso administrativo |
 | `GET/POST /api/pub/categories`, `PATCH/DELETE /api/pub/categories/:id` | Consultar categorías. Las altas, cambios y bajas requieren administración |
 | `GET /api/pop/movements`, `POST /api/pop/:id/movements` | Historial y movimientos de stock. Recepción puede registrar ventas |

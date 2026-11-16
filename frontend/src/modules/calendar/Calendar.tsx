@@ -74,7 +74,7 @@ export function Calendar({
     >
       <div className="calendar-toolbar">
         <div className="calendar-navigation">
-          <h2>{title}</h2>
+          <h2><Icon name="calendar" size={21} /> {title}</h2>
           <div className="button-group">
             <button
               aria-label={`${range} días anteriores`}
@@ -145,7 +145,7 @@ export function Calendar({
           <p className="availability-guide">
             Cada fila de dormitorio es una cama. El contador indica camas libres / total por día.
           </p>
-          <div className="calendar-scroll">
+          <div className="calendar-scroll" role="region" aria-label="Cuadrícula del calendario" tabIndex={0}>
             <div className={`calendar-grid days-${range}`}>
               <div className="calendar-dates">
                 <div className="resource-label">HABITACIÓN / CAMA</div>

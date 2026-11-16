@@ -29,6 +29,7 @@ export function FolioSheet({
   const [refunding, setRefunding] = useState<{ payment: Payment; group: boolean } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState("Efectivo");
   const [amountText, setAmountText] = useState("");
+  const [refundText, setRefundText] = useState("");
   const [voiding, setVoiding] = useState<number | null>(null);
   const [onlyDue, setOnlyDue] = useState(false);
   const [showService, setShowService] = useState(false);
@@ -58,7 +59,8 @@ export function FolioSheet({
   });
   const total = (key: "paid_cents" | "balance_cents" | "total_cents") =>
     (entries ?? []).reduce((sum, row) => sum + row[key], 0);
-  async function save(endpoint: string, body: () => unknown, done: () => void, method = "POST") {
+  async function save(endpoint: string, body: () => unknown, done: () => void, method = "POST", feedback = "Cambios guardados.") {
+    if (busy) return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -68,7 +70,7 @@ export function FolioSheet({
       committed = true;
       done();
       setDetails(await api<FolioDetails>(path));
-      setNotice("Cambios guardados.");
+      setNotice(feedback);
       await onSaved();
     } catch (error) {
       setError(committed ? "El movimiento se guardó. Vuelve a abrir la hoja para actualizarla." : (error as Error).message);
@@ -104,15 +106,18 @@ export function FolioSheet({
         method: values.get("method"),
         amount_cents: cents(String(values.get("amount"))),
         expected_balance_cents: payStay ? stayBalance : undefined,
+        expected_method: editing?.payment.method,
       }),
       closePayment,
       editing ? "PATCH" : "POST",
+      editing ? "Abono corregido. Caja ya refleja el cambio." : "Abono registrado.",
     );
   }
   function paymentPath(payment: Payment, group: boolean) {
     return `/${group ? "stay-payments" : "payments"}/${payment.id}`;
   }
   function closePayment() {
+    setError("");
     setShowRate(false);
     setPayStay(false);
     setEditing(null);
@@ -128,17 +133,15 @@ export function FolioSheet({
     void save(paymentPath(refunding.payment, refunding.group) + "/refunds", () => ({
       amount_cents: cents(String(fields.get("amount"))),
       reason: fields.get("reason"),
-    }), closePayment);
+    }), closePayment, "POST", "Reembolso registrado. Se actualizó el saldo de la hoja.");
   }
   function paymentActions(record: Payment, group = false) {
     if (record.voided || record.retained_cents <= 0) return null;
-    const canCorrect = user.role !== "receptionist" && record.retained_cents === record.amount_cents;
+    const canCorrect = record.retained_cents === record.amount_cents;
     return (
       <div className="row-actions">
-        <button type="button" className="text-button" disabled={busy}
-          onClick={() => { closePayment(); setRefunding({ payment: record, group }); }}>Reembolsar</button>
-        {canCorrect && user.role === "superadmin" && <button
-          type="button" className="text-button" disabled={busy}
+        {canCorrect && <button
+          type="button" className="button secondary compact" disabled={busy}
           onClick={() => {
             closePayment();
             setEditing({ payment: record, group });
@@ -147,7 +150,10 @@ export function FolioSheet({
           }}>
           Editar abono
         </button>}
-        {canCorrect && <button type="button" className="text-button" disabled={busy}
+        <button type="button" className="button secondary compact" disabled={busy}
+          onClick={() => { closePayment(); setRefundText(""); setRefunding({ payment: record, group }); }}>Reembolsar</button>
+        {!canCorrect && <small>Este abono ya tiene reembolsos.</small>}
+        {canCorrect && user.role !== "receptionist" && <button type="button" className="text-button" disabled={busy}
           onClick={() => {
             if (voiding === record.id)
               void save(paymentPath(record, group) + "/void", () => ({}), closePayment);
@@ -160,6 +166,7 @@ export function FolioSheet({
   }
   const cancelled = folio.status === "cancelled";
   const base = /^\d{1,9}([.,]\d{1,2})?$/.test(amountText) ? cents(amountText) : 0;
+  const refundAmount = /^\d{1,9}([.,]\d{1,2})?$/.test(refundText) ? cents(refundText) : 0;
   const balance = total("balance_cents");
   const stayBalance = entries?.reduce((sum, row) => sum + (row.lodging_day ? row.balance_cents : 0), 0) ?? 0;
   const arrival = folio.joined_on ?? folio.check_in;
@@ -196,7 +203,7 @@ export function FolioSheet({
           hospedaje.
         </p>
       )}
-      <ErrorBox message={error} />
+      {!refunding && !payment && !editing && !payStay && <ErrorBox message={error} />}
       <p className="folio-feedback" role="status">{notice}</p>
       {!entries && !error && <p role="status">Cargando movimientos…</p>}
       {entries && (
@@ -223,7 +230,8 @@ export function FolioSheet({
                     closePayment();
                     setShowService(false);
                     setPayStay(open);
-                    setPaymentMethod("Efectivo");
+                    setAmountText("");
+                    setPaymentMethod("");
                   }}>
                   {folio.status === "pending" || folio.status === "confirmed" ? "Registrar adelanto" : "Abonar hospedaje"}
                 </button>}
@@ -257,31 +265,42 @@ export function FolioSheet({
               <button className="button primary" disabled={busy}>Guardar tarifa</button>
             </div>
           </form>}
-          {refunding && <form key={refunding.payment.id} className="form-stack folio-form" onSubmit={submitRefund}>
-            <h3>Registrar reembolso</h3>
-            <p>Disponible {money(refunding.payment.retained_cents)} · {refunding.payment.method}</p>
-            {refunding.group && <p>Se descuenta de las últimas partidas de este cobro de estadía.</p>}
+          {refunding && <Modal title="Registrar reembolso" className="folio-payment-dialog"
+            onClose={() => { if (!busy) closePayment(); }}>
+            <form className="form-stack" onSubmit={submitRefund}>
+            <ErrorBox message={error} />
+            <p className="folio-operation-summary"><strong>Disponible para devolver {money(refunding.payment.retained_cents)}</strong>
+              <span>Abono del {shortDate(refunding.payment.day, true)} · Devolución por {refunding.payment.method}</span>
+            </p>
+            {refunding.group && <p>La devolución se aplica desde las últimas partidas del cobro de estadía.</p>}
             <div className="form-grid">
-              <label>Importe a devolver (Bs)<input name="amount" inputMode="decimal" pattern="[0-9]{1,9}([.,][0-9]{1,2})?" required autoFocus /></label>
+              <label>Importe a devolver (Bs)<input name="amount" inputMode="decimal" pattern="[0-9]{1,9}([.,][0-9]{1,2})?"
+                value={refundText} onChange={(e) => setRefundText(e.target.value)} required autoFocus /></label>
               <label>Motivo<input name="reason" maxLength={160} required /></label>
             </div>
+            <button type="button" className="button secondary compact" disabled={busy}
+              onClick={() => setRefundText((refunding.payment.retained_cents / 100).toFixed(2))}>Usar importe completo</button>
+            {refundAmount > refunding.payment.retained_cents && <ErrorBox message="El importe supera lo disponible para devolver." />}
             <div className="modal-actions">
               <button type="button" className="button secondary" onClick={closePayment} disabled={busy}>Cancelar</button>
-              <button className="button primary" disabled={busy}>Registrar reembolso</button>
+              <button className="button primary" disabled={busy || !refundAmount || refundAmount > refunding.payment.retained_cents}>Registrar reembolso</button>
             </div>
-          </form>}
+            </form>
+          </Modal>}
           {(payment || editing || payStay) && (
+            <Modal title={editing ? "Editar abono" : "Registrar abono"} className="folio-payment-dialog"
+              onClose={() => { if (!busy) closePayment(); }}>
             <form
               key={editing ? `edit-${editing.payment.id}` : payStay ? "stay" : payment?.lodging_day ?? payment?.service_id}
-              className="form-stack folio-form"
+              className="form-stack"
               onSubmit={submitPayment}
             >
-              <h3>
-                {editing ? (editing.group ? "Editar cobro de estadía" : "Editar abono")
-                  : payStay ? "Abono de hospedaje del grupo" : payment && `Abonar · ${payment.service} del ${shortDate(payment.day)}`}
-              </h3>
-              {payment && <p>Saldo disponible · {money(payment.balance_cents)}</p>}
-              {payStay && <p>Saldo de hospedaje · {money(stayBalance)}</p>}
+              <ErrorBox message={error} />
+              <p className="folio-operation-summary">
+                <strong>{editing ? `Abono registrado · ${money(editing.payment.amount_cents)}` : `Saldo pendiente · ${money(payment?.balance_cents ?? stayBalance)}`}</strong>
+                <span>{editing ? `${editing.payment.method} · ${shortDate(editing.payment.day, true)}`
+                  : payment ? `${payment.service} · ${shortDate(payment.day, true)}` : "Hospedaje del grupo"}</span>
+              </p>
               {editing?.group && <p>La corrección se aplica a todas las hojas vinculadas al cobro.</p>}
               <div className="form-grid">
                 <label>
@@ -289,7 +308,7 @@ export function FolioSheet({
                   <input name="day" type="date" defaultValue={editing?.payment.day ?? today()} required />
                 </label>
                 <label>
-                  Abono (Bs)
+                  Importe del abono (Bs)
                   <input
                     name="amount"
                     inputMode="decimal"
@@ -301,8 +320,9 @@ export function FolioSheet({
                   />
                 </label>
                 <label>
-                  Pago con
-                  <select name="method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
+                  Medio de pago
+                  <select name="method" value={paymentMethod} required onChange={(event) => setPaymentMethod(event.target.value)}>
+                    <option value="" disabled>Selecciona cómo se pagó</option>
                     {paymentMethods.map(
                       (method) => (
                         <option key={method}>{method}</option>
@@ -311,20 +331,29 @@ export function FolioSheet({
                   </select>
                 </label>
               </div>
+              {payStay && !editing && <div className="row-actions">
+                <button type="button" className="button secondary compact" disabled={busy}
+                  onClick={() => setAmountText((stayBalance / 100).toFixed(2))}>Usar saldo completo</button>
+              </div>}
+              {!editing && base > (payment?.balance_cents ?? stayBalance) && <ErrorBox message="El importe supera el saldo pendiente." />}
+              {!editing && base > 0 && base <= (payment?.balance_cents ?? stayBalance) && <p>
+                Saldo después del abono · <strong>{money((payment?.balance_cents ?? stayBalance) - base)}</strong>
+              </p>}
               {paymentMethod === "Tarjeta" && <CardCharge base={base} />}
               <div className="modal-actions">
                 <button
                   type="button"
                   className="button secondary"
-                  onClick={closePayment}
+                  onClick={closePayment} disabled={busy}
                 >
                   Cancelar
                 </button>
-                <button className="button primary" disabled={busy || (payStay && (!base || base > stayBalance))}>
+                <button className="button primary" disabled={busy || !base || !paymentMethod || (!editing && base > (payment?.balance_cents ?? stayBalance))}>
                   {editing ? "Guardar corrección" : "Registrar abono"}
                 </button>
               </div>
             </form>
+            </Modal>
           )}
           {showService && (
             <form className="form-stack folio-form" onSubmit={submitService}>
@@ -410,15 +439,15 @@ export function FolioSheet({
                           closePayment();
                           setPayment(row);
                           setAmountText((row.balance_cents / 100).toFixed(2));
-                          setPaymentMethod("Efectivo");
+                          setPaymentMethod("");
                         }}
                       >
-                        Abonar
+                        Registrar abono
                       </button>
                     )}
                     {row.payments.length > 0 && (
                       <details className="payment-history">
-                        <summary>Ver abonos ({row.payments.length})</summary>
+                        <summary>Gestionar abonos ({row.payments.length})</summary>
                         {row.payments.map((p) => (
                           <div key={p.id} className="folio-payment-item">
                             <strong>{money(p.amount_cents)} · {p.method}</strong>

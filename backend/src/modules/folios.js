@@ -357,15 +357,25 @@ export function folioModule(db) {
     res.json({ ok: true });
   }
   function editPayment(req, res, group) {
-    if (req.user.role !== "superadmin")
-      fail("Solo el superadministrador puede editar abonos.", 403);
     const folioId = integer(Number(req.params.id), "Hoja");
     const paymentId = integer(Number(req.params.paymentId), "Abono");
     const id = transaction(db, () => {
       const payment = activePayment(db, folioId, paymentId, group);
       checkRefunds(paymentId);
-      const folio = findFolio(db, folioId);
       const before = paymentSnapshot(db, paymentId, group);
+      const details = paymentDetails(req.body);
+      const amount = integer(req.body.amount_cents, "Abono", 1, group ? MAX_STAY_CENTS : MAX_NIGHTLY_CENTS);
+      if (req.body.expected_method !== undefined && req.body.expected_method !== before.method)
+        fail("El medio de pago cambió. Vuelve a abrir la hoja antes de corregirlo.", 409);
+      if (details.day === before.day && amount === before.amount_cents) {
+        if (details.method === before.method) return paymentId;
+        if (group) db.prepare("UPDATE folio_payments SET method=? WHERE group_id=?").run(details.method, paymentId);
+        db.prepare("UPDATE folio_payments SET method=?,surcharge_cents=? WHERE id=?")
+          .run(details.method, cardSurcharge(amount, details.method), paymentId);
+        audit(db, req.user, "replace", "folio_payment", paymentId, before, paymentSnapshot(db, paymentId, group));
+        return paymentId;
+      }
+      const folio = findFolio(db, folioId);
       db.prepare(group
         ? "UPDATE folio_payments SET voided=1 WHERE group_id=?"
         : "UPDATE folio_payments SET voided=1 WHERE id=?").run(paymentId);
@@ -374,8 +384,6 @@ export function folioModule(db) {
         audit(db, req.user, "replace", "folio_payment", paymentId, before, paymentSnapshot(db, replacement, true));
         return replacement;
       }
-      const details = paymentDetails(req.body);
-      const amount = integer(req.body.amount_cents, "Abono", 1, MAX_NIGHTLY_CENTS);
       const row = entries(db, folio).find((row) =>
         row.service_id === payment.service_id && row.lodging_day === payment.lodging_day);
       if (!row || amount > row.balance_cents) fail("El abono supera el saldo del cargo.", 409);

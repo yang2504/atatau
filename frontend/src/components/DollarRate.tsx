@@ -25,8 +25,8 @@ export function DollarRate() {
   const quote = result?.quote;
   const expired = !!quote && quote.valid_until < today();
   return <>
-    <button type="button" className="button secondary compact"
-      onClick={() => { setOpen(true); void consult(); }}>Dólar BCB</button>
+    <button type="button" className="button secondary compact dollar-trigger" aria-haspopup="dialog"
+      onClick={() => { setOpen(true); void consult(); }}><Icon name="exchange" size={16} /> Dólar BCB</button>
     {open && <Modal title="Dólar oficial del BCB" onClose={() => setOpen(false)}>
       <div className="form-stack">
         {quote && <>
