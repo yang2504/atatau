@@ -9,7 +9,8 @@ import type { Data, User } from "../../lib/types";
 
 type Product = { id: number; name: string; stock: number; price_cents: number; active: number; category_id: number | null; low_stock: number; photo_revision: string | null };
 type Category = { id: number; name: string };
-type Movement = { id: number; day: string; kind: "sale" | "in" | "out"; detail: string; quantity: number; author: string; folio_id: number | null; folio_title: string | null };
+type Movement = { id: number; day: string; kind: "sale" | "in" | "out"; detail: string; quantity: number; base_cents: number; author: string; folio_id: number | null; folio_title: string | null };
+type Removal = { target: "product"; item: Product } | { target: "category"; item: Category };
 const movementNames = { sale: "Venta", in: "Entrada", out: "Baja" };
 
 const imageUrl = (product: Product) => `/api/pub/${product.id}/photo?v=${product.photo_revision}`;
@@ -46,6 +47,7 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
   const [selected, setSelected] = useState<Product | null>(null);
   const [edit, setEdit] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState(false);
+  const [removal, setRemoval] = useState<Removal | null>(null);
   const [photo, setPhoto] = useState<string | null | undefined>();
   const [photoBusy, setPhotoBusy] = useState(false);
   const [search, setSearch] = useState("");
@@ -53,13 +55,18 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
   const [folioSearch, setFolioSearch] = useState("");
   const [folioId, setFolioId] = useState("");
   const [ready, setReady] = useState(false);
-  const [kind, setKind] = useState("sale");
+  const [kind, setKind] = useState<Movement["kind"]>("sale");
+  const [onCredit, setOnCredit] = useState(false);
   const [method, setMethod] = useState("Efectivo");
-  const [quantity, setQuantity] = useState(1);
+  const [units, setUnits] = useState("1");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const base = (selected?.price_cents ?? 0) * quantity;
+  const quantity = Number(units);
+  const stock = selected?.stock ?? 0;
+  const maxQuantity = kind === "in" ? 1_000_000 - stock : stock;
+  const validQuantity = Number.isInteger(quantity) && quantity >= 1 && quantity <= maxQuantity;
+  const base = validQuantity ? (selected?.price_cents ?? 0) * quantity : 0;
   const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
   const catalog = products.filter((product) => admin || product.active);
   const alerts = catalog.filter(low);
@@ -78,6 +85,7 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
       return [{ ...item, location: rooms.join(", ") || item.room_name }];
     return [];
   });
+  const chosenFolio = matchingFolios.find((item) => String(item.id) === folioId);
 
   async function load() {
     const [items, history, groups] = await Promise.all([
@@ -99,11 +107,12 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
     setEditingProduct(true);
   }
 
-  function openMovement(product: Product, operation: string) {
+  function openMovement(product: Product, operation: Movement["kind"], chargeToGuest = false) {
     setError("");
     setSelected(product);
     setKind(operation);
-    setQuantity(1);
+    setUnits("1");
+    setOnCredit(chargeToGuest);
     setMethod("Efectivo");
     setFolioSearch("");
     setFolioId("");
@@ -160,29 +169,34 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
     });
   }
 
-  function removeCategory(category: Category) {
-    if (!window.confirm(`¿Eliminar «${category.name}»? Sus productos pasarán a Sin categoría y conservarán su stock e historial.`)) return;
+  function removeItem() {
+    if (!removal) return;
     void perform(async () => {
-      await api(`/pub/categories/${category.id}`, {}, "DELETE");
-      setEditCategory(null);
-      setEdit((current) => current?.category_id === category.id ? { ...current, category_id: null } : current);
-      setSuccess("Categoría eliminada.");
+      if (removal.target === "product") {
+        await api(`/pub/${removal.item.id}`, {}, "DELETE");
+        setSuccess("Producto eliminado del catálogo.");
+      } else {
+        await api(`/pub/categories/${removal.item.id}`, {}, "DELETE");
+        setEditCategory((current) => current?.id === removal.item.id ? null : current);
+        setSuccess("Categoría eliminada.");
+      }
+      setRemoval(null);
     });
   }
 
   function move(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!selected) return;
+    if (!selected || !validQuantity || (onCredit && !chosenFolio)) return;
     const form = event.currentTarget;
     const values = new FormData(form);
     void perform(async () => {
       const result = await api<{ collected_cents: number; folio_id: number | null }>(`/pub/${selected.id}/movements`, {
-        kind, quantity, method: method === "debt" ? undefined : method,
-        folio_id: kind === "sale" && method === "debt" ? Number(folioId) : undefined,
+        kind, quantity, method: onCredit ? undefined : method,
+        folio_id: onCredit ? Number(folioId) : undefined,
         detail: values.get("detail"), base_cents: base,
       });
       form.reset();
-      setQuantity(1);
+      setUnits("1");
       setSelected(null);
       setSuccess(result.folio_id ? `Consumo de ${money(base)} cargado a la hoja #${result.folio_id}.`
         : kind === "sale" ? `Venta registrada · ${money(result.collected_cents)}` : "Stock actualizado.");
@@ -191,7 +205,7 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
   }
 
   return <div className="form-stack pub-workspace">
-    {!managingCategories && !selected && !editingProduct && <ErrorBox message={error} />}
+    {!managingCategories && !selected && !editingProduct && !removal && <ErrorBox message={error} />}
     {!managingCategories && success && <p className="group-booking-summary" role="status">{success}</p>}
         <section className="panel pub-catalog">
           <div className="section-toolbar pop-catalog-toolbar">
@@ -228,17 +242,28 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
             <div className="pub-product-body">
               <small>{categoryNames.get(product.category_id ?? 0) ?? "Sin categoría"}</small>
               <h3>{product.name}</h3>
-              <div className="pub-product-figures"><strong>{money(product.price_cents)}</strong>
+              <div className="pub-product-figures"><span><strong>{money(product.price_cents)}</strong> / unidad</span>
                 <span className={low(product) ? "pub-stock-alert" : undefined}>
                   {!product.active ? "Inactivo" : !product.stock ? "Agotado" : low(product) ? `Bajo stock · ${product.stock} u.` : `${product.stock} u.`}
                 </span>
               </div>
-              <button className="button primary" aria-label={`Vender ${product.name}`}
-                disabled={busy || !product.stock || !product.active} onClick={() => openMovement(product, "sale")}>Vender</button>
+              <div className="pub-sale-actions">
+                <button className="button primary" aria-label={`Vender ${product.name}`}
+                  disabled={busy || !product.stock || !product.active} onClick={() => openMovement(product, "sale")}>Vender</button>
+                <button className="button secondary" aria-label={`Cargar ${product.name} a huésped`}
+                  disabled={busy || !product.stock || !product.active} onClick={() => openMovement(product, "sale", true)}>
+                  <Icon name="receipt" size={16} /> Cargar a huésped
+                </button>
+              </div>
               {admin && <div className="row-actions pub-product-actions">
-                <button className="text-button" aria-label={`Editar ${product.name}`} disabled={busy} onClick={() => openProduct(product)}>Editar</button>
                 <button className="text-button" aria-label={`Mover stock de ${product.name}`} disabled={busy}
                   onClick={() => openMovement(product, product.active ? "in" : "out")}>Mover stock</button>
+                <div className="row-actions">
+                  <button type="button" className="button secondary pub-icon-action" aria-label={`Editar ${product.name}`}
+                    title="Editar producto" disabled={busy} onClick={() => openProduct(product)}><Icon name="pencil" size={18} /></button>
+                  <button type="button" className="button danger-outline pub-icon-action" aria-label={`Eliminar ${product.name}`}
+                    title="Eliminar producto" disabled={busy} onClick={() => { setError(""); setRemoval({ target: "product", item: product }); }}><Icon name="trash" size={18} /></button>
+                </div>
               </div>}
             </div>
           </article>)}</div>
@@ -247,43 +272,53 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
           <div className="section-toolbar"><h2>Movimientos recientes</h2></div>
           {!movements.length && <p className="quiet-state">Todavía no se registraron movimientos.</p>}
           {!!movements.length && <div className="table-scroll"><table>
-            <thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Unidades</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Unidades</th><th>Precio por unidad</th><th>Subtotal</th></tr></thead>
             <tbody>{movements.map((entry) => <tr key={entry.id}>
               <td>{shortDate(entry.day)}</td><td>{entry.folio_id ? "A cuenta" : movementNames[entry.kind]}</td>
               <td>{entry.detail}<small className="cell-sub">{entry.folio_id ? `Hoja #${entry.folio_id} · ${entry.folio_title} · ` : ""}{entry.author}</small></td><td>{entry.quantity}</td>
+              <td>{entry.kind === "sale" ? money(entry.base_cents / entry.quantity) : "—"}</td>
+              <td>{entry.kind === "sale" ? money(entry.base_cents) : "—"}</td>
             </tr>)}</tbody>
           </table></div>}
         </section>
-        {selected && <Modal title={kind === "sale" ? `Vender · ${selected.name}` : `Mover stock · ${selected.name}`}
+        {selected && <Modal title={`${kind !== "sale" ? "Mover stock" : onCredit ? "Cargar a huésped" : "Vender"} · ${selected.name}`}
           className="pub-dialog" onClose={() => { if (!busy) { setSelected(null); setError(""); } }}>
           <ErrorBox message={error} />
-          <p className="muted">{selected.stock} disponibles · {money(selected.price_cents)} por unidad</p>
           <form className="form-stack" onSubmit={move} key={selected.id}>
-            {admin && kind !== "sale" && <label>Movimiento<select value={kind} onChange={(e) => { setKind(e.target.value); setQuantity(1); }}>
+            {admin && kind !== "sale" && <label>Movimiento<select value={kind} onChange={(e) => { setKind(e.target.value === "in" ? "in" : "out"); setUnits("1"); }}>
               {selected.active === 1 && <option value="in">Entrada de stock</option>}
               <option value="out">Baja de stock</option>
             </select></label>}
-            <label>Unidades<input type="number" min={1} max={kind === "in" ? 1000000 - selected.stock : selected.stock} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} required /></label>
+            <label>Unidades<input type="number" min={1} max={maxQuantity} step={1} value={units} onChange={(e) => setUnits(e.target.value)} required />
+              <small className="muted">{stock} unidades en stock</small>
+            </label>
             {kind === "sale" ? <>
-              <label>Medio de pago<select value={method} onChange={(e) => setMethod(e.target.value)}>
-                {paymentMethods.map((item) => <option key={item}>{item}</option>)}
-                <option value="debt">A cuenta del huésped</option>
-              </select></label>
-              {method === "debt" && <>
+              <fieldset className="pub-sale-mode" disabled={busy}>
+                <legend>¿Cómo se registra la venta?</legend>
+                <label><input type="radio" name="sale-mode" checked={!onCredit} onChange={() => setOnCredit(false)} /> Cobrar ahora</label>
+                <label><input type="radio" name="sale-mode" checked={onCredit} onChange={() => setOnCredit(true)} /> A cuenta del huésped</label>
+              </fieldset>
+              {onCredit ? <>
                 <label>Buscar huésped o habitación<input type="search" value={folioSearch} onChange={(e) => { setFolioSearch(e.target.value); setFolioId(""); }} /></label>
                 <label>Hoja de consumo<select value={folioId} required onChange={(e) => setFolioId(e.target.value)}>
-                  <option value="">{matchingFolios.length ? "Selecciona una hoja" : "Sin hojas de huéspedes alojados"}</option>
+                  <option value="">{matchingFolios.length ? "Selecciona una hoja" : guestFolios.length ? "Sin coincidencias" : "Sin huéspedes alojados"}</option>
                   {matchingFolios.map((item) => <option key={item.id} value={item.id}>{item.title}{item.location && ` · ${item.location}`} · Hoja #{item.id}</option>)}
-                </select></label>
-              </>}
-              {method === "Tarjeta" ? <CardCharge base={base} /> : <p className="group-booking-summary"><strong>
-                {method === "debt" ? "Total a la hoja" : "Total a cobrar"} · {money(base)}
-              </strong></p>}
+                </select>
+                  {chosenFolio && <small className="pub-folio-confirmation">Hoja #{chosenFolio.id} · {chosenFolio.title}{chosenFolio.location && ` · ${chosenFolio.location}`}</small>}
+                </label>
+              </> : <label>Medio de pago<select value={method} onChange={(e) => setMethod(e.target.value)}>
+                {paymentMethods.map((item) => <option key={item}>{item}</option>)}
+              </select></label>}
+              <div className="pub-sale-summary" aria-live="polite">
+                <p>{validQuantity ? `${quantity} × ${money(selected.price_cents)} · Quedan ${stock - quantity} u.` : `${money(selected.price_cents)} por unidad`}</p>
+                <strong>{onCredit ? "Total a la hoja" : "Subtotal"} · {validQuantity ? money(base) : "—"}</strong>
+              </div>
+              {validQuantity && !onCredit && method === "Tarjeta" && <CardCharge base={base} />}
             </> : <label>Motivo<input name="detail" maxLength={160} required /></label>}
             <div className="modal-actions">
               <button type="button" className="button secondary" disabled={busy} onClick={() => { setSelected(null); setError(""); }}>Cancelar</button>
-              <button className="button primary" disabled={busy || (!selected.stock && kind !== "in") || (method === "debt" && !folioId)}>
-                {kind !== "sale" ? "Registrar movimiento" : method === "debt" ? "Cargar a la hoja" : "Registrar venta"}
+              <button className="button primary" disabled={busy || !validQuantity || (onCredit && !chosenFolio)}>
+                {kind !== "sale" ? "Registrar movimiento" : onCredit ? "Cargar a la hoja" : "Registrar venta"}
               </button>
             </div>
           </form>
@@ -324,15 +359,18 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
           </form>
         </Modal>}
     {managingCategories && <Modal title="Categorías del Pub" onClose={() => setManagingCategories(false)}>
-      <ErrorBox message={error} />
+      {!removal && <ErrorBox message={error} />}
       {success && <p className="form-note" role="status">{success}</p>}
       {categories.length > 0 && <ul className="pop-category-list">
         {categories.map((category) => <li key={category.id}>
           <strong>{category.name}</strong>
           <div className="row-actions">
-            <button type="button" className="button secondary compact" disabled={busy}
-              onClick={() => { setEditCategory(category); setError(""); setSuccess(""); }}>Editar</button>
-            <button type="button" className="text-button" disabled={busy} onClick={() => removeCategory(category)}>Eliminar</button>
+            <button type="button" className="button secondary pub-icon-action" disabled={busy}
+              aria-label={`Editar categoría ${category.name}`} title="Editar categoría"
+              onClick={() => { setEditCategory(category); setError(""); setSuccess(""); }}><Icon name="pencil" size={18} /></button>
+            <button type="button" className="button danger-outline pub-icon-action" disabled={busy}
+              aria-label={`Eliminar categoría ${category.name}`} title="Eliminar categoría"
+              onClick={() => { setError(""); setRemoval({ target: "category", item: category }); }}><Icon name="trash" size={18} /></button>
           </div>
         </li>)}
       </ul>}
@@ -346,6 +384,16 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
             onClick={() => setEditCategory(null)}>Cancelar</button>}
         </div>
       </form>
+    </Modal>}
+    {removal && <Modal title={`Eliminar ${removal.target === "product" ? "producto" : "categoría"}`}
+      onClose={() => { if (!busy) { setRemoval(null); setError(""); } }}>
+      <ErrorBox message={error} />
+      {removal.target === "product" ? <p>Se retirará <strong>{removal.item.name}</strong> del catálogo con las {removal.item.stock} unidades registradas. Sus ventas y cargos permanecerán en el historial.</p>
+        : <p>Los productos de <strong>{removal.item.name}</strong> pasarán a <strong>Sin categoría</strong> y conservarán sus existencias.</p>}
+      <div className="modal-actions">
+        <button type="button" className="button secondary" disabled={busy} autoFocus onClick={() => { setRemoval(null); setError(""); }}>Cancelar</button>
+        <button type="button" className="button danger" disabled={busy} onClick={removeItem}><Icon name="trash" size={18} /> Eliminar {removal.target === "product" ? "producto" : "categoría"}</button>
+      </div>
     </Modal>}
   </div>;
 }

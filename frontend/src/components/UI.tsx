@@ -56,6 +56,8 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
       </>
     ),
     plus: <path d="M12 5v14M5 12h14" />,
+    pencil: <><path d="m4 16 11-11a2.8 2.8 0 0 1 4 4L8 20l-5 1zM13 7l4 4" /></>,
+    trash: <path d="M3 6h18M9 6V3h6v3m4 0-1 14H6L5 6m5 4v6m4-6v6" />,
     chevron: <path d="m9 5 7 7-7 7" />,
     check: <path d="m5 12 4 4L19 6" />,
     arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
@@ -104,7 +106,7 @@ export function Modal({
   return (
     <dialog
       ref={ref}
-      className={[wide && "wide-dialog", className].filter(Boolean).join(" ") || undefined}
+      className={["app-modal", wide && "wide-dialog", className].filter(Boolean).join(" ")}
       aria-labelledby={titleId}
       onCancel={(event) => {
         event.preventDefault();
@@ -116,12 +118,9 @@ export function Modal({
       }}
     >
       <div className="modal-heading">
-        <div>
-          <span className="eyebrow">HOSTEL ATATAU</span>
-          <h2 id={titleId}>{title}</h2>
-        </div>
-        <button className="icon-button" onClick={onClose} aria-label="Cerrar">
-          <Icon name="close" size={19} />
+        <h2 id={titleId}>{title}</h2>
+        <button type="button" className="icon-button" onClick={onClose} aria-label="Cerrar">
+          <Icon name="close" size={22} />
         </button>
       </div>
       {children}

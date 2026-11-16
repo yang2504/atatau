@@ -8,14 +8,16 @@ import { turnFor } from "./shifts.js";
 
 export function popModule(db, admin) {
   const router = Router();
-  const find = db.prepare("SELECT * FROM pop_products WHERE id=?");
+  const find = db.prepare("SELECT * FROM pop_products WHERE id=? AND deleted_at IS NULL");
   const findCategory = db.prepare("SELECT * FROM pop_categories WHERE id=?");
   router.get("/", (req, res) => res.json(db.prepare(`
     SELECT p.*,photo.revision AS photo_revision FROM pop_products p
-    LEFT JOIN pop_product_photos photo ON photo.product_id=p.id ORDER BY p.name
+    LEFT JOIN pop_product_photos photo ON photo.product_id=p.id
+    WHERE p.deleted_at IS NULL ORDER BY p.name
   `).all()));
   router.get("/:id/photo", (req, res) => {
-    const photo = db.prepare("SELECT jpeg FROM pop_product_photos WHERE product_id=?").get(integer(Number(req.params.id), "Producto"));
+    const photo = db.prepare(`SELECT photo.jpeg FROM pop_product_photos photo JOIN pop_products p ON p.id=photo.product_id
+      WHERE p.id=? AND p.deleted_at IS NULL`).get(integer(Number(req.params.id), "Producto"));
     if (!photo) fail("Foto inexistente.", 404);
     res.type("image/jpeg").send(Buffer.from(photo.jpeg));
   });
@@ -78,7 +80,7 @@ export function popModule(db, admin) {
       const categoryId = req.body.category_id === undefined ? previous?.category_id ?? null :
         req.body.category_id === null ? null : integer(req.body.category_id, "Categoría");
       if (categoryId !== null && !findCategory.get(categoryId)) fail("Categoría inexistente.", 404);
-      if (db.prepare("SELECT id FROM pop_products WHERE name=? AND id<>?").get(name, id ?? 0))
+      if (db.prepare("SELECT id FROM pop_products WHERE name=? AND id<>? AND deleted_at IS NULL").get(name, id ?? 0))
         fail("Ya existe un producto con ese nombre.", 409);
       if (id) db.prepare("UPDATE pop_products SET name=?,price_cents=?,active=?,category_id=?,low_stock=? WHERE id=?")
         .run(name, price, active, categoryId, reorder, id);
@@ -87,13 +89,25 @@ export function popModule(db, admin) {
       if (photo) db.prepare(`INSERT INTO pop_product_photos VALUES(?,?,?) ON CONFLICT(product_id)
         DO UPDATE SET jpeg=excluded.jpeg,revision=excluded.revision`).run(saved, photo, randomUUID());
       else if (encoded === null) db.prepare("DELETE FROM pop_product_photos WHERE product_id=?").run(saved);
-      audit(db, req.user, id ? "update" : "create", "pop_product", saved);
+      audit(db, req.user, id ? "update" : "create", "pop_product", saved, previous, find.get(saved));
       return saved;
     });
     res.status(id ? 200 : 201).json({ id: savedId });
   }
   router.post("/", admin, save);
   router.patch("/:id", admin, save);
+  router.delete("/:id", admin, (req, res) => {
+    const id = integer(Number(req.params.id), "Producto");
+    transaction(db, () => {
+      const before = find.get(id);
+      if (!before) fail("Producto inexistente.", 404);
+      const after = db.prepare("UPDATE pop_products SET deleted_at=?,active=0 WHERE id=? RETURNING *")
+        .get(new Date().toISOString(), id);
+      db.prepare("DELETE FROM pop_product_photos WHERE product_id=?").run(id);
+      audit(db, req.user, "delete", "pop_product", id, before, after);
+    });
+    res.json({ ok: true });
+  });
   router.post("/:id/movements", (req, res) => {
     const productId = integer(Number(req.params.id), "Producto");
     const quantity = integer(req.body.quantity, "Cantidad");

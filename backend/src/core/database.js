@@ -137,6 +137,20 @@ export function openDatabase(
       db.exec("PRAGMA user_version = 16");
     });
   }
+  if (db.prepare("PRAGMA user_version").get().user_version < 17) {
+    db.exec("PRAGMA foreign_keys = OFF");
+    try {
+      transaction(db, () => {
+        if (db.prepare("PRAGMA user_version").get().user_version >= 17) return;
+        db.exec(readFileSync(new URL("./017-pub-product-removal.sql", import.meta.url), "utf8"));
+        if (db.prepare("PRAGMA foreign_key_check").get())
+          throw new Error("La migración 017 dejaría referencias sin resolver.");
+        db.exec("PRAGMA user_version = 17");
+      });
+    } finally {
+      db.exec("PRAGMA foreign_keys = ON");
+    }
+  }
   db.prepare(
     "INSERT OR IGNORE INTO platforms (id,name,active) VALUES (1,'Sin reserva / directo',1),(2,'Booking',1),(3,'Hostelworld',1)",
   ).run();

@@ -1,5 +1,17 @@
 # Cambios y decisiones importantes
 
+## 2026-11-16 — Acciones de modales y ventas del Pub
+
+- Los modales comparten botones, etiquetas y controles más grandes y con mayor contraste. **Configuración → Equipo de Atatau → Nuevo usuario** abre un formulario modal con confirmación visible al guardar.
+- El Pub muestra precio por unidad, subtotal y existencias restantes. **Cargar a huésped** abre la venta a cuenta y registra el cargo y la salida de stock en la misma transacción. El historial muestra el precio por unidad y el subtotal de cada venta.
+- El lápiz edita productos y categorías. El basurero pide confirmación y la migración 017 conserva los movimientos y cargos de los productos retirados. Respaldar la carpeta de datos con Atatau detenido antes de actualizar recepción.
+- Pasaron `npm test`, `npm run check` y `npm run build`. Se comprobó la migración con una base de la versión anterior y en Chrome se probaron la creación de usuario, la venta por unidades, el cargo a un huésped desde recepción y la gestión de productos y categorías. Queda pendiente actualizar la instalación de recepción.
+
+## 2026-11-16 — Egresos de Caja para recepción
+
+- Todos los roles pueden registrar compras y otros egresos del día en **Caja → Mi turno**, tanto en Caja Chica como en Caja Pub. Cada movimiento se guarda con su turno, autor y medio de pago. Administración conserva el permiso de anular movimientos manuales.
+- Pasaron `npm test`, `npm run check` y `npm run build`. En Chrome con datos ficticios se registraron un egreso en efectivo como primer movimiento del turno y otro con tarjeta en Caja Pub. Queda pendiente actualizar la instalación de recepción.
+
 ## 2026-11-16 — Calendario ampliable
 
 - Se redujeron los espacios del encabezado para mostrar más filas. El botón **Ampliar** oculta el resumen inicial y **Ver resumen** lo recupera. Se usan los mismos filtros, fechas y cuadrícula en ambas vistas para conservar la búsqueda y la posición cuando el espacio lo permite.

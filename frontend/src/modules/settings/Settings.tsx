@@ -2,7 +2,7 @@ import { RoomRates } from "./RoomRates";
 import { useEffect, useState, type FormEvent } from "react";
 import type { Data, User } from "../../lib/types";
 import { api, roleNames } from "../../lib/api";
-import { ErrorBox, Modal } from "../../components/UI";
+import { ErrorBox, Icon, Modal } from "../../components/UI";
 import { chatColor } from "../../lib/chatColor";
 export function Settings({
   data,
@@ -21,8 +21,9 @@ export function Settings({
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const [profile, setProfile] = useState<User | null>(null);
+  const [creatingUser, setCreatingUser] = useState(false);
   const [passwordUser, setPasswordUser] = useState<User | null>(null);
-  const [passwordNotice, setPasswordNotice] = useState("");
+  const [userNotice, setUserNotice] = useState("");
   const loadUsers = async () => setUsers(await api<User[]>("/users"));
   useEffect(() => {
     void loadUsers().catch((e) => setError(e.message));
@@ -46,7 +47,8 @@ export function Settings({
       v = new FormData(form);
     void perform(async () => {
       await api("/users", Object.fromEntries(v));
-      form.reset();
+      setCreatingUser(false);
+      setUserNotice(`Usuario creado: ${v.get("name")}.`);
     });
   }
   function addPlatform(e: FormEvent<HTMLFormElement>) {
@@ -90,7 +92,7 @@ export function Settings({
       await api(`/users/${passwordUser.id}/password`, { password }, "PATCH");
       setPasswordUser(null);
       if (passwordUser.id === user.id) await onPasswordChanged();
-      else setPasswordNotice(`Contraseña actualizada para ${passwordUser.name}.`);
+      else setUserNotice(`Contraseña actualizada para ${passwordUser.name}.`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -99,7 +101,7 @@ export function Settings({
   }
   return (
     <>
-      {!profile && !passwordUser && <ErrorBox message={error} />}
+      {!creatingUser && !profile && !passwordUser && <ErrorBox message={error} />}
       <div className="settings-grid">
         <section className="panel settings-panel">
           <span className="eyebrow">CANALES DE RESERVA</span>
@@ -150,8 +152,13 @@ export function Settings({
         </section>
         <section className="panel settings-panel">
           <span className="eyebrow">ACCESO AL SISTEMA</span>
-          <h2>Equipo de Atatau</h2>
-          {passwordNotice && <p role="status">{passwordNotice}</p>}
+          <div className="row-actions settings-team-heading">
+            <h2>Equipo de Atatau</h2>
+            <button type="button" className="button primary" disabled={busy} onClick={() => {
+              setError(""); setUserNotice(""); setCreatingUser(true);
+            }}><Icon name="plus" size={18} /> Nuevo usuario</button>
+          </div>
+          {userNotice && <p role="status">{userNotice}</p>}
           <div className="setting-list">
             {users.map((u) => (
               <div key={u.id}>
@@ -168,10 +175,10 @@ export function Settings({
                     <button className="button secondary compact" disabled={busy} onClick={() => {
                       setError("");
                       setProfile(u);
-                    }}>Editar perfil</button>
+                    }}><Icon name="pencil" size={16} /> Editar perfil</button>
                     {user.role === "superadmin" && <button className="button secondary compact" disabled={busy} onClick={() => {
                       setError("");
-                      setPasswordNotice("");
+                      setUserNotice("");
                       setPasswordUser(u);
                     }}>Cambiar contraseña</button>}
                     {u.id !== user.id && (
@@ -196,50 +203,6 @@ export function Settings({
               </div>
             ))}
           </div>
-          <h3>Crear usuario</h3>
-          <form onSubmit={addUser} className="form-stack">
-            <div className="form-grid">
-              <label>
-                Nombre
-                <input name="name" required maxLength={100} />
-              </label>
-              <label>
-                Usuario
-                <input
-                  name="username"
-                  required
-                  maxLength={60}
-                  pattern={"[a-zA-Z0-9._\\-]+"}
-                />
-              </label>
-            </div>
-            <label>
-              Contraseña
-              <input
-                name="password"
-                type="password"
-                minLength={10}
-                maxLength={128}
-                autoComplete="new-password"
-                required
-              />
-            </label>
-            <label>
-              Rol
-              <select name="role">
-                <option value="receptionist">Recepcionista</option>
-                {user.role === "superadmin" && (
-                  <>
-                    <option value="admin">Administradora</option>
-                    <option value="superadmin">Superadministrador</option>
-                  </>
-                )}
-              </select>
-            </label>
-            <button disabled={busy} className="button primary">
-              Crear usuario
-            </button>
-          </form>
         </section>
         <section className="panel settings-panel">
           <h2>Tipo de cambio para hospedaje</h2>
@@ -256,13 +219,39 @@ export function Settings({
         </section>
         <RoomRates data={data} onSaved={onSaved} />
       </div>
-      {profile && <Modal title={`Editar perfil · ${profile.name}`} onClose={() => setProfile(null)}>
+      {creatingUser && <Modal title="Crear usuario" onClose={() => { if (!busy) { setCreatingUser(false); setError(""); } }}>
+        <form onSubmit={addUser} className="form-stack">
+          <ErrorBox message={error} />
+          <div className="form-grid">
+            <label>Nombre completo<input name="name" required maxLength={100} autoFocus /></label>
+            <label>Nombre de usuario<input name="username" required maxLength={60} pattern={"[a-zA-Z0-9._\\-]+"} autoComplete="off" /></label>
+          </div>
+          <label>Contraseña<input name="password" type="password" minLength={10} maxLength={128} autoComplete="new-password" required />
+            <small className="muted">Usa al menos 10 caracteres.</small>
+          </label>
+          <label>Rol<select name="role">
+            <option value="receptionist">Recepcionista</option>
+            {user.role === "superadmin" && <>
+              <option value="admin">Administradora</option>
+              <option value="superadmin">Superadministrador</option>
+            </>}
+          </select></label>
+          <div className="modal-actions">
+            <button type="button" className="button secondary" disabled={busy} onClick={() => { setCreatingUser(false); setError(""); }}>Cancelar</button>
+            <button className="button primary" disabled={busy}>{busy ? "Creando…" : "Crear usuario"}</button>
+          </div>
+        </form>
+      </Modal>}
+      {profile && <Modal title={`Editar perfil · ${profile.name}`} onClose={() => { if (!busy) { setProfile(null); setError(""); } }}>
         <form className="form-stack" onSubmit={editProfile}>
           <ErrorBox message={error} />
           <label>Nombre<input name="name" autoFocus defaultValue={profile.name} required maxLength={100} /></label>
           <label>Usuario<input name="username" defaultValue={profile.username} required maxLength={60} pattern={"[a-zA-Z0-9._\\-]+"} /></label>
           <label>Color del chat<input type="color" name="chat_color" defaultValue={chatColor(profile.id, profile.chat_color)} /></label>
-          <button className="button primary" disabled={busy}>Guardar perfil</button>
+          <div className="modal-actions">
+            <button type="button" className="button secondary" disabled={busy} onClick={() => { setProfile(null); setError(""); }}>Cancelar</button>
+            <button className="button primary" disabled={busy}>Guardar perfil</button>
+          </div>
         </form>
       </Modal>}
       {passwordUser && <Modal title={`Cambiar contraseña · ${passwordUser.name}`}
@@ -276,7 +265,10 @@ export function Settings({
           <label>Confirmar contraseña
             <input name="confirmation" type="password" autoComplete="new-password" minLength={10} maxLength={128} required />
           </label>
-          <button className="button primary" disabled={busy}>{busy ? "Guardando…" : "Guardar contraseña"}</button>
+          <div className="modal-actions">
+            <button type="button" className="button secondary" disabled={busy} onClick={() => { setPasswordUser(null); setError(""); }}>Cancelar</button>
+            <button className="button primary" disabled={busy}>{busy ? "Guardando…" : "Guardar contraseña"}</button>
+          </div>
         </form>
       </Modal>}
     </>

@@ -74,7 +74,7 @@
   margin-top: auto;
   color: #344d3e;
 }
-.pub-product-figures strong { font-variant-numeric: tabular-nums; }
+.pub-product-figures strong { font-size: 1rem; color: var(--green-dark); font-variant-numeric: tabular-nums; }
 .pub-product-figures span { font-size: .75rem; }
 .pub-stock-alert {
   padding: 4px 7px;
@@ -84,6 +84,38 @@
   font-weight: 650;
 }
 .pub-product-actions { justify-content: space-between; flex-wrap: wrap; }
+.pub-sale-actions { display: grid; gap: 6px; }
+.pub-icon-action { width: 40px; min-height: 40px; padding: 7px; }
+.pub-sale-mode {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-inline-size: 0;
+  padding: 8px;
+}
+.pub-sale-mode legend { color: #284538; font-size: .9375rem; font-weight: 650; }
+.app-modal .pub-sale-mode label {
+  display: flex;
+  align-items: center;
+  padding: 8px;
+  min-height: 44px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.pub-sale-mode label:has(:checked) { background: var(--green-soft); border-color: #8caf98; }
+.pub-sale-mode input { accent-color: var(--green); flex: none; margin: 0; }
+.pub-sale-summary {
+  display: grid;
+  gap: 5px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #eef5eb;
+  color: var(--green-dark);
+  font-variant-numeric: tabular-nums;
+}
+.pub-sale-summary strong { font-size: 1.125rem; }
+.pub-folio-confirmation { color: var(--muted); overflow-wrap: anywhere; }
 .pub-photo-preview {
   width: 96px;
   height: 72px;
@@ -91,9 +123,6 @@
   background: #edf3e9;
   border-radius: 8px;
 }
-.pub-dialog .modal-heading .eyebrow,
-.cash-dialog .modal-heading .eyebrow { display: none; }
-.pub-dialog .modal-actions, .cash-dialog .modal-actions { flex-wrap: wrap; }
 .cash-expense-link {
   padding: 0;
   border: 0;
@@ -242,6 +271,10 @@ small {
   color: #304b3d;
 }
 .secondary:hover { background: #eef4eb; }
+.button.danger { color: #fff; background: #922c24; }
+.button.danger:hover { background: #732019; }
+.button.danger-outline { color: #8c2d24; border-color: #e1b5ad; background: #fff7f4; }
+.button.danger-outline:hover { background: #ffe6e0; }
 .compact {
   min-height: 32px;
   font-size: 12px;
@@ -1352,6 +1385,7 @@ small {
 .settings-panel h3 {
   margin-bottom: 20px;
 }
+.settings-team-heading { justify-content: space-between; flex-wrap: wrap; }
 .inline-form {
   display: flex;
   gap: 9px;
@@ -1504,18 +1538,42 @@ dialog::backdrop {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
 }
 .modal-heading h2 {
-  font-size: 23px;
+  font-size: clamp(21px, 2.4vw, 26px);
   font-weight: 730;
   color: var(--green-dark);
+  overflow-wrap: anywhere;
 }
-.modal-heading .icon-button { color: var(--green); }
+.modal-heading .icon-button {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  color: var(--green-dark);
+  background: #f0f5ed;
+}
 .modal-heading .icon-button:hover { background: var(--green-soft); }
-.modal-heading .eyebrow {
-  font-size: 8px;
+.app-modal .button { min-height: 44px; font-size: .9375rem; font-weight: 700; white-space: normal; }
+.app-modal .button.compact { padding-inline: 10px; }
+.app-modal :is(.tabs, .folio-filters) button { min-height: 40px; font-size: .875rem; }
+.app-modal summary { color: var(--green-dark); font-size: .9375rem; font-weight: 650; }
+.app-modal .text-button {
+  min-height: 40px;
+  padding-inline: 8px;
+  font-size: .875rem;
+  text-decoration: underline;
+  text-underline-offset: .18em;
 }
+.app-modal .text-button:hover { background: #eef4eb; border-radius: 8px; }
+.app-modal .form-stack label { color: #284538; font-size: .9375rem; }
+.app-modal :is(input:not([type=checkbox], [type=radio]), select, textarea) { font-size: 1rem; }
+.app-modal :is(.row-actions, .modal-actions) { flex-wrap: wrap; }
 .modal-actions {
   border-top: 1px solid var(--border);
   padding-top: 18px;
@@ -1563,12 +1621,6 @@ legend {
 }
 .group-reservation-dialog {
   width: min(690px, calc(100vw - 24px));
-}
-.group-reservation-dialog .modal-heading .eyebrow {
-  display: none;
-}
-.group-reservation-dialog .modal-actions {
-  flex-wrap: wrap;
 }
 .group-common-dates {
   margin: 0 0 -9px;
@@ -2111,7 +2163,6 @@ details[open] summary {
   line-height: 1.45;
 }
 .folio-dialog .modal-heading { margin-bottom: 16px; }
-.folio-dialog .modal-heading .eyebrow { display: none; }
 .folio-dialog .icon-button { min-width: 40px; min-height: 40px; }
 .folio-header {
   display: grid;
@@ -2181,14 +2232,10 @@ details[open] summary {
 .folio-history-item p, .folio-payment-item p { margin: 2px 0; color: var(--folio-muted); }
 .folio-history-item .text-button, .folio-payment-item .text-button { min-height: 32px; }
 .folio-history-item .row-actions, .folio-payment-item .row-actions { flex-wrap: wrap; margin-top: 6px; }
-.folio-dialog .button.compact { font-size: .8125rem; }
 .folio-payment-dialog {
   font-size: .9375rem;
   line-height: 1.5;
 }
-.folio-payment-dialog .modal-heading .eyebrow { display: none; }
-.folio-payment-dialog .form-stack label { font-size: .875rem; color: #314b3e; }
-.folio-payment-dialog .modal-actions { flex-wrap: wrap; }
 .folio-operation-summary {
   display: grid;
   gap: 3px;

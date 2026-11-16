@@ -51,6 +51,8 @@ El alta y la edición de grupos envían `room_assignments` con `room_id`, `pax` 
 
 Los productos del Pub guardan una foto JPEG por producto en `pop_product_photos`. El catálogo devuelve su revisión y la imagen se sirve por `GET /api/pub/:id/photo`. En una venta a cuenta, el movimiento se vincula a un servicio de la hoja en la misma transacción que descuenta el stock. Solo los pagos y devoluciones de ese servicio se contabilizan en Caja Pub.
 
+`DELETE /api/pub/:id` requiere permiso administrativo. Retira el producto del catálogo y elimina su foto, registrando la acción en auditoría. La fila del producto conserva su identificador para los movimientos históricos y no admite nuevas ventas ni ajustes de stock.
+
 `POST /api/reservations/:id/move` registra un traslado con fecha, unidades de destino, salida y tarifa opcional. Usa la vista `reservation_occupancy` para validar cruces y conservar los tramos anteriores. `PATCH /api/folios/:id/lodging-rate` ajusta las tarifas de un rango dentro de la estadía y valida que cada cargo cubra los abonos aplicados. `POST /api/scanner/document` devuelve una imagen JPEG de Windows WIA a una sesión autenticada. El archivo temporal se elimina después de la captura.
 
 `POST /api/reservations/:id/guests` registra una incorporación desde `joined_on` hasta la salida, con la unidad y tarifa adicional por noche. Valida capacidad, cruces y el estado de la reserva en una transacción. Las incorporaciones se guardan en `guests` y aparecen en `added_guests`. El PAX original sigue siendo la base de reparto de las hojas existentes. La hoja conjunta suma la tarifa adicional por fecha y la modalidad individual crea una hoja para el nuevo huésped.
@@ -80,7 +82,7 @@ Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "err
 | `GET/POST /api/shifts`, `PUT /api/shifts/:id` | Consultar y ajustar el horario semanal desde administración |
 | `POST /api/folios/:id/payments/:paymentId/refunds` y variante `stay-payments` | Registrar un reembolso por importe base y motivo con una cuenta activa de recepción o administración |
 | `GET /api/cash/daily`, `GET /api/cash/monthly?month=AAAA-MM` | Caja por fecha para administración. La ruta diaria devuelve el turno actual para recepción. Cada movimiento incluye el importe base y su aporte al efectivo físico |
-| `POST /api/cash`, `POST /api/cash/:id/void` | Registrar movimiento manual y anularlo con permiso administrativo. Caja Pub admite egresos manuales y recibe ingresos nuevos desde ventas de inventario |
+| `POST /api/cash`, `POST /api/cash/:id/void` | Todos los roles pueden registrar movimientos manuales. Recepción registra los del día en su turno. La anulación requiere permiso administrativo. Caja Pub admite egresos manuales y recibe ingresos nuevos desde ventas de inventario |
 | `GET /api/bcb/usd` | Cotización oficial, vigencia, disponibilidad y tipo de cambio aplicable a tarifas |
 | `GET/PUT /api/lodging-exchange-rate` | Consultar y configurar el tipo de cambio de respaldo. Solo administración escribe |
 | `GET /api/audit` | Historial paginado de reservas, hojas y caja, solo administración |

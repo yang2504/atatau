@@ -71,11 +71,12 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - La hoja muestra total, abonos y saldo junto a los datos de la reserva. El filtro **Con saldo** reúne los cargos pendientes. El importe y el estado se distinguen en rojo hasta cubrir el saldo.
 - Desde **Detalle de cargos** puedes agregar servicios, abonar una partida y consultar sus abonos. Los comprobantes de estadía y las devoluciones tienen un acceso junto a los cargos. En pantallas estrechas, cada cargo muestra los importes y acciones sin desplazamiento horizontal.
 - En una reserva puedes elegir una hoja por huésped o una cuenta conjunta a nombre de la persona encargada. Si dejas el encargado vacío, se usa el titular de la reserva.
-- **Caja Chica** registra automáticamente los abonos de servicios de recepción y los cobros de hospedaje. **Caja Pub** recibe las ventas cobradas en el Pub y los abonos de sus consumos cargados a huéspedes. Los ingresos, egresos y anulaciones manuales usan formularios modales según el rol. La vista **Egresos** muestra el detalle del período para el medio seleccionado.
+- **Caja Chica** registra automáticamente los abonos de servicios de recepción y los cobros de hospedaje. **Caja Pub** recibe las ventas cobradas en el Pub y los abonos de sus consumos cargados a huéspedes. En **Caja → Mi turno**, todos los roles pueden registrar los egresos del día en la caja correspondiente. El movimiento conserva el turno y el nombre de quien lo registró. La vista **Egresos** muestra el detalle del período para el medio seleccionado.
 - Cada caja tiene dos pestañas de movimientos. **Efectivo** muestra las entradas y salidas físicas. **Transferencia** reúne QR, tarjeta, transferencia y otros medios, al importe base. Los cobros rápidos y los abonos aparecen automáticamente según el método registrado.
 - En **Turnos**, administración ajusta el inicio y fin de cada horario semanal. El turno de Caja se registra con el primer movimiento y mantiene sus horas al volver a iniciar sesión. Los movimientos fuera de horario se agrupan por persona y día de Bolivia, y aparecen como **Fuera de horario**. **Historial de turnos** muestra los registros con movimientos y su hora de cierre.
 - **Convertir tarifa de USD a Bs** consulta el tipo de cambio oficial del BCB al activar la casilla. Puedes aplicar el equivalente a una reserva, una extensión o el talonario. Si el BCB no responde, se usa el último dato oficial guardado mientras esté vigente. Cuando falta una cotización vigente, se usa el respaldo de **Configuración → Tipo de cambio para hospedaje**, si administración lo guardó. El importe aplicado se redondea al centavo y se guarda en bolivianos.
-- **Inventario Pub** muestra tarjetas con foto, precio y stock. Administración puede administrar categorías y agregar o editar productos desde un modal. Cada producto admite una foto de hasta 800 px y 200 KiB después de comprimirla, guardada en SQLite. La alerta de reposición usa un mínimo configurable, con 3 unidades por defecto. Cada venta descuenta stock. **A cuenta del huésped** crea un cargo en la hoja de una persona alojada y Caja Pub registra el ingreso cuando se cobra ese cargo.
+- **Inventario Pub** muestra tarjetas con foto, precio por unidad y stock. Con **Vender** o **Cargar a huésped**, elige las unidades y revisa el subtotal y el stock restante. La venta a cuenta descuenta el stock y agrega el cargo a la hoja seleccionada de un huésped alojado. Caja Pub registra el ingreso al cobrar el cargo. El historial conserva las unidades y el precio de cada venta.
+- Administración gestiona productos y categorías con el lápiz y el basurero. **Baja de stock** ajusta las existencias del producto. **Eliminar producto** lo retira del catálogo y conserva sus ventas, movimientos y cargos anteriores. La alerta de reposición usa un mínimo configurable, con 3 unidades por defecto. Cada foto se guarda en SQLite con hasta 800 px y 200 KiB después de comprimirla.
 - **Auditoría** permite a administración consultar el usuario, la hora local y los valores anterior y nuevo de reservas, llegadas, cambios de habitación y fechas, cancelaciones, consumos, abonos y movimientos de caja. Los registros históricos conservan la información que se guardaba en su momento.
 
 ## Reglas de operación
@@ -120,9 +121,9 @@ Las personas acompañantes sin nombre se guardan como `Acompañante 2`, etc. Fal
 | Crear/activar/desactivar recepcionistas | No | Sí | Sí |
 | Editar nombre, usuario y color de recepcionistas | No | Sí | Sí |
 | Crear/activar/desactivar administradores y superadministradores | No | No | Sí |
-| Consultar el turno propio y registrar ingresos manuales del día | Sí | Sí | Sí |
+| Consultar el turno propio y registrar ingresos y egresos manuales del día | Sí | Sí | Sí |
 | Consultar turnos del equipo, auditoría y configurar el cambio de hospedaje | No | Sí | Sí |
-| Ver cuaderno mensual, registrar egresos y anular movimientos manuales | No | Sí | Sí |
+| Ver cuaderno mensual y anular movimientos manuales | No | Sí | Sí |
 | Consultar Inventario Pub y registrar ventas | Sí | Sí | Sí |
 | Gestionar productos y categorías del Pub y registrar entradas o bajas de stock | No | Sí | Sí |
 
@@ -141,6 +142,8 @@ Antes de arrancar esta versión sobre una base existente, haz ese respaldo. La m
 La migración 015 registra traslados por fecha sin cambiar los identificadores de reservas, hojas ni abonos.
 
 La migración 016 añade fotos y alertas al catálogo del Pub y vincula sus ventas a cuenta con hojas existentes. El respaldo de la carpeta `data` incluye las fotos.
+
+La migración 017 habilita eliminar productos del catálogo y conserva los identificadores referenciados por ventas, fotos existentes y cargos. Antes de instalarla sobre una base existente, cierra Atatau y respalda toda la carpeta de datos.
 
 La aplicación escucha exclusivamente en `127.0.0.1`: solo se accede desde el equipo del hostel. Los usuarios pueden turnarse en ese equipo; no está configurada para acceso por red ni multi-PC. Se usa la zona horaria `America/La_Paz` y fechas ISO sin hora para las estadías. La moneda de los gastos de novedades se asume bolivianos; confirmar al definir consumos.
 

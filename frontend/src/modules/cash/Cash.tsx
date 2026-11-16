@@ -188,7 +188,7 @@ export function Cash({ user }: { user: User }) {
           </div>
           {view === "current" && turn?.started_at && <div className="row-actions">
             {box === "petty" && <button className="button primary" onClick={() => openMovement("income")}><Icon name="plus" size={16} /> Registrar ingreso</button>}
-            {admin && <button className="button secondary" onClick={() => openMovement("expense")}>Registrar egreso</button>}
+            <button type="button" className="button secondary" onClick={() => openMovement("expense")}>Registrar egreso</button>
           </div>}
           {view === "monthly" && <input type="month" aria-label="Mes del cuaderno" value={month} onChange={(e) => { if (e.target.value) setMonth(e.target.value); }} />}
         </div>

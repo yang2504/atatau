@@ -1,10 +1,43 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, rmdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, rmdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { openDatabase } from "../src/core/database.js";
+
+test("la migración 017 conserva productos, fotos y ventas de una base instalada", () => {
+  const directory = mkdtempSync(join(tmpdir(), "atatau-pub-migration-"));
+  const path = join(directory, "v16.sqlite");
+  try {
+    const old = new DatabaseSync(path);
+    try {
+      old.exec("PRAGMA foreign_keys = OFF");
+      const core = new URL("../src/core/", import.meta.url);
+      const scripts = readdirSync(core).filter((file) => /^0(?:0[1-9]|1[0-6])-.*\.sql$/.test(file)).sort();
+      for (const file of ["schema.sql", ...scripts]) old.exec(readFileSync(new URL(file, core), "utf8"));
+      old.exec(`INSERT INTO users(id,name,username,password_hash,role) VALUES(1,'Demo','demo','unused','admin');
+        INSERT INTO pop_categories(id,name) VALUES(2,'Bebidas');
+        INSERT INTO pop_products(id,name,price_cents,stock,category_id,low_stock) VALUES(3,'Agua',500,8,2,4);
+        INSERT INTO pop_product_photos(product_id,jpeg,revision) VALUES(3,x'FFD8FFD9','foto');
+        INSERT INTO pop_movements(product_id,day,kind,quantity,detail,base_cents,user_id)
+          VALUES(3,'2026-11-16','sale',2,'Agua × 2',1000,1);
+        PRAGMA user_version = 16;`);
+    } finally { old.close(); }
+    const db = openDatabase(path);
+    try {
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 17);
+      const product = db.prepare("SELECT * FROM pop_products WHERE id=3").get();
+      assert.deepEqual([product.name, product.stock, product.category_id, product.low_stock, product.deleted_at], ["Agua", 8, 2, 4, null]);
+      assert.equal(db.prepare("SELECT revision FROM pop_product_photos WHERE product_id=3").get().revision, "foto");
+      assert.equal(db.prepare("SELECT base_cents FROM pop_movements WHERE product_id=3").get().base_cents, 1000);
+      assert.deepEqual(db.prepare("PRAGMA foreign_key_check").all(), []);
+    } finally { db.close(); }
+  } finally {
+    rmSync(path, { force: true });
+    rmdirSync(directory);
+  }
+});
 
 test("la migración 002 conserva reservas, novedades y cobros QR históricos", () => {
   const directory = mkdtempSync(join(tmpdir(), "atatau-migration-"));
@@ -35,7 +68,7 @@ test("la migración 002 conserva reservas, novedades y cobros QR históricos", (
     }
     const db = openDatabase(path);
     try {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 16);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 17);
       assert.equal(db.prepare("SELECT joined_on FROM guests WHERE id=1").get().joined_on, null);
       assert.equal(db.prepare("SELECT COUNT(*) AS n FROM reservation_night_rates").get().n, 0);
       assert.equal(db.prepare("SELECT folio_holder FROM reservations WHERE id=1").get().folio_holder, "");
@@ -92,7 +125,7 @@ test("la migración 003 completa ambas variantes instaladas de la versión 002",
         }
         const db = openDatabase(path);
         try {
-          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 16);
+          assert.equal(db.prepare("PRAGMA user_version").get().user_version, 17);
           const product = db.prepare("SELECT stock,category_id FROM pop_products WHERE name='Producto histórico'").get();
           assert.equal(product.stock, 3);
           assert.equal(product.category_id, null);
