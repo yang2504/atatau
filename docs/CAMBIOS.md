@@ -1,5 +1,22 @@
 # Cambios y decisiones importantes
 
+## 2026-11-17 — A/C CAMILO y alerta de saldo en calendario
+
+- A/C CAMILO se puede elegir al registrar el hospedaje de entrada. El importe en Bs escrito por recepción cubre el hospedaje del huésped y aparece en fucsia en el calendario. La hoja muestra la cobertura del intermediario sin deuda por ese importe. Los cargos adicionales mantienen su saldo y cobro habituales.
+- Caja Chica incorpora A/C CAMILO para todos los roles, con estimado y detalle mensual por fecha de registro del importe. Es un estimado bruto en Bs: no convierte los dólares cobrados en la plataforma ni descuenta liquidaciones recibidas. Estos registros no suman ingresos al efectivo ni a transferencias. Se pueden corregir o anular según los permisos existentes; no generan reembolsos de dinero que no entró al hotel.
+- El icono de la hoja en el calendario se pinta rojo y anuncia el saldo pendiente cuando cualquier hoja de la reserva tiene deuda. El cálculo comparte las reglas del detalle y contempla cuentas individuales, servicios, abonos, devoluciones y anulaciones.
+- La migración 019 conserva aplicaciones de cobros, turnos, anulaciones y reembolsos al ampliar los medios de hospedaje. Detener Atatau y respaldar toda la carpeta de datos antes de actualizar recepción.
+- Pasaron `npm test`, `npm run check` y `npm run build`. Las pruebas cubren cobertura individual exacta en centavos, separación de Caja, estimado mensual, permisos, consumos adicionales, pagos, devoluciones y anulación de Camilo. Se verificaron en navegador el formulario de entrada, la hoja y el calendario con datos ficticios en una base temporal mediante `ATATAU_DB`.
+- Pendiente: actualizar la instalación de recepción. La conciliación de las transferencias mensuales de Camilo queda fuera del estimado solicitado.
+
+## 2026-11-17 — Lectura del calendario y corrección de consumos del Pub
+
+- Se ampliaron fechas, columnas, filas, nombres de habitación y texto de reservas para facilitar la lectura en recepción. Se reforzó el contraste y se mantuvo el desplazamiento de la cuadrícula y sus encabezados fijos.
+- Todos los roles pueden quitar un consumo vinculado al Pub desde la hoja, indicando el motivo. La operación devuelve las unidades al stock y conserva la venta anulada, el movimiento compensatorio y la auditoría. Los abonos retenidos bloquean la anulación hasta su devolución completa o anulación administrativa.
+- La migración 018 añade la marca de anulación sin borrar cargos históricos. Antes de actualizar recepción, detener Atatau y respaldar toda la carpeta de datos.
+- Pasaron `npm test`, `npm run check` y `npm run build`. Las pruebas cubren pertenencia a la hoja, autenticación, abonos vigentes, reposición de stock, repetición y bloqueo de nuevos abonos al cargo anulado. Se comprobó el flujo con datos ficticios en navegador y una base temporal indicada mediante `ATATAU_DB`.
+- La definición de A/C CAMILO se resolvió en la entrada posterior de esta misma fecha. Queda pendiente actualizar la instalación de recepción.
+
 ## 2026-11-16 — Acciones de modales y ventas del Pub
 
 - Los modales comparten botones, etiquetas y controles más grandes y con mayor contraste. **Configuración → Equipo de Atatau → Nuevo usuario** abre un formulario modal con confirmación visible al guardar.

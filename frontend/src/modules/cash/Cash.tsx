@@ -24,6 +24,10 @@ type Turn = {
   author: string; window_key: string | null; refresh_at?: string | null;
 };
 type HistoricalTurn = Turn & { id: number; started_at: string; expires_at: string };
+type CamiloEstimate = {
+  estimated_cents: number;
+  reservations: { reservation_id: number; guest_name: string; check_in: string; check_out: string; amount_cents: number }[];
+};
 const outsideSchedule = (turn: Turn) => /^(outside|extra):/.test(turn.window_key ?? "");
 const sources = { manual: "Manual", folio: "Hoja de consumo", stay: "Cobro de estadía", pop: "Venta Pub", refund: "Reembolso" };
 const transferMethods = paymentMethods.filter((method) => method !== "Efectivo");
@@ -35,6 +39,7 @@ export function Cash({ user }: { user: User }) {
   const [view, setView] = useState("current");
   const [movementFilter, setMovementFilter] = useState<"all" | Entry["kind"]>("all");
   const [month, setMonth] = useState(today().slice(0, 7));
+  const [camilo, setCamilo] = useState<CamiloEstimate | null>(null);
   const [movementKind, setMovementKind] = useState<Entry["kind"] | null>(null);
   const [voiding, setVoiding] = useState<Entry | null>(null);
   const [notice, setNotice] = useState("");
@@ -78,7 +83,7 @@ export function Cash({ user }: { user: User }) {
     setMovementKind(kind);
   }
   const byTurn = view === "current" || view === "history";
-  const path = view === "monthly" ? `/cash/monthly?month=${month}&box=${box}`
+  const path = view === "camilo" ? false : view === "monthly" ? `/cash/monthly?month=${month}&box=${box}`
     : byTurn ? (view === "current" || turnId) && `/cash/turns/${view === "current" ? "current" : turnId}?box=${box}`
     : `/cash/daily?box=${box}`;
   useEffect(() => {
@@ -98,6 +103,16 @@ export function Cash({ user }: { user: User }) {
     });
     return () => { active = false; };
   }, [path, version]);
+  useEffect(() => {
+    if (view !== "camilo") return;
+    let active = true;
+    setCamilo(null);
+    setError("");
+    void api<CamiloEstimate>(`/cash/camilo?month=${month}`).then((result) => {
+      if (active) setCamilo(result);
+    }).catch((error) => { if (active) setError(error.message); });
+    return () => { active = false; };
+  }, [view, month, version]);
   useEffect(() => {
     if (view !== "current" || !turn?.refresh_at) return;
     const timer = window.setTimeout(() => setVersion((value) => value + 1),
@@ -125,6 +140,7 @@ export function Cash({ user }: { user: User }) {
     setEntries(null);
     setError("");
     setBox(next);
+    if (view === "camilo") setView("current");
   }
 
   async function record(event: FormEvent<HTMLFormElement>) {
@@ -172,6 +188,8 @@ export function Cash({ user }: { user: User }) {
     <div className="tabs" role="group" aria-label="Período de caja">
       <button className={view === "current" ? "active" : ""} aria-pressed={view === "current"} onClick={() => switchView("current")}>Mi turno</button>
       <button className={view === "history" ? "active" : ""} aria-pressed={view === "history"} onClick={() => switchView("history")}>Historial de turnos</button>
+      {box === "petty" && <button className={view === "camilo" ? "active" : ""} aria-pressed={view === "camilo"}
+        onClick={() => switchView("camilo")}>A/C CAMILO</button>}
       {admin && <>
         <button className={view === "daily" ? "active" : ""} aria-pressed={view === "daily"} onClick={() => switchView("daily")}>Caja diaria</button>
         <button className={view === "monthly" ? "active" : ""} aria-pressed={view === "monthly"} onClick={() => switchView("monthly")}>Cuaderno mensual</button>
@@ -180,7 +198,29 @@ export function Cash({ user }: { user: User }) {
     {!movementKind && !voiding && <ErrorBox message={error} />}
     {notice && <p className="group-booking-summary" role="status">{notice}</p>}
     <div>
-      <section className="panel">
+      {view === "camilo" ? <section className="panel">
+        <div className="section-toolbar">
+          <div><h2>A/C CAMILO · Liquidación mensual</h2>
+            <p className="muted">Hospedaje pagado al intermediario, por mes de registro. Importes en Bs según lo registrado por recepción.</p></div>
+          <label>Mes de registro<input type="month" value={month} onChange={(event) => { if (event.target.value) setMonth(event.target.value); }} /></label>
+        </div>
+        <section className="ledger-summary" aria-label="Estimado de Camilo">
+          <h3>Estimado a recibir de Camilo</h3>
+          <div className="ledger-totals"><span>Importe del mes <strong>{camilo ? money(camilo.estimated_cents) : "—"}</strong></span>
+            <span>Reservas <strong>{camilo?.reservations.length ?? 0}</strong></span></div>
+          <p>Este estimado no suma ingresos al efectivo ni a transferencias. No descuenta liquidaciones que Camilo haya enviado.</p>
+        </section>
+        {!camilo && !error && <p role="status">Cargando estimado…</p>}
+        {camilo && !camilo.reservations.length && <p className="quiet-state">Sin hospedajes registrados por A/C CAMILO en este mes.</p>}
+        {!!camilo?.reservations.length && <div className="table-scroll"><table>
+          <thead><tr><th>Reserva y huésped</th><th>Estadía</th><th>Importe estimado</th></tr></thead>
+          <tbody>{camilo.reservations.map((row) => <tr key={row.reservation_id}>
+            <td><strong>#{row.reservation_id} · {row.guest_name}</strong></td>
+            <td>{shortDate(row.check_in, true)} → {shortDate(row.check_out, true)}</td>
+            <td><strong>{money(row.amount_cents)}</strong></td>
+          </tr>)}</tbody>
+        </table></div>}
+      </section> : <section className="panel">
         <div className="section-toolbar">
           <div>
             <h2>{boxLabel} · {byTurn ? (turn?.id ? `Turno #${turn.id}` : view === "current" ? "Mi turno" : "Historial de turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
@@ -261,7 +301,7 @@ export function Cash({ user }: { user: User }) {
             </tr>)}</tbody>
           </table>
         </div>}
-      </section>
+      </section>}
       {movementKind && <Modal title={`${movementKind === "expense" ? "Registrar egreso" : "Registrar ingreso"} · ${boxLabel}`}
         className="cash-dialog" onClose={() => { if (!busy) { setError(""); setMovementKind(null); } }}>
         <ErrorBox message={error} />

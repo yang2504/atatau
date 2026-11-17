@@ -5,7 +5,7 @@ import { api, today, addDays, daysBetween, shortDate, statusNames } from "../../
 import { Modal, ErrorBox, Icon } from "../../components/UI";
 import { StayDates } from "./StayDates";
 import { ReservationStaff } from "./ReservationStaff";
-import { cents, money, paymentMethods } from "../../lib/money";
+import { cents, money, paymentMethods, lodgingPaymentMethods } from "../../lib/money";
 import { CardCharge } from "../../components/CardCharge";
 import { lodgingTotal, normalRoomRate, occupiedUnits } from "../../lib/lodging";
 import { GroupRooms } from "./GroupRooms";
@@ -488,10 +488,13 @@ export function ReservationForm({
               <label>Medio de pago al llegar
                 <select value={arrivalMethod} onChange={(e) => setArrivalMethod(e.target.value)} required>
                   {!r && <option value="" disabled>Seleccionar medio de pago</option>}
-                  {paymentMethods.map((method) => <option key={method}>{method}</option>)}
+                  {lodgingPaymentMethods.map((method) => <option key={method}>{method}</option>)}
                 </select>
               </label>
               {arrivalMethod === "Tarjeta" && <CardCharge base={lodgingDue} />}
+              {arrivalMethod === "A/C CAMILO" && <p className="form-note">
+                Hospedaje pagado a Camilo. El huésped queda sin saldo de hospedaje y el importe pasa al estimado mensual por recibir, sin ingreso de dinero en Caja.
+              </p>}
             </>}
           </fieldset>
         )}
@@ -529,12 +532,12 @@ export function ReservationForm({
             Cerrar
           </button>
           <button disabled={busy || (group ? !groupReady || !priced || groupAdvanceInvalid : !room) || !end || r?.status === "cancelled"} className="button primary">
-            {busy ? "Guardando…" : r ? "Guardar cambios" : registerNow ? (collect ? "Registrar entrada y cobro" : "Registrar entrada")
+            {busy ? "Guardando…" : r ? "Guardar cambios" : registerNow ? (collect ? arrivalMethod === "A/C CAMILO" ? "Registrar entrada · A/C CAMILO" : "Registrar entrada y cobro" : "Registrar entrada")
               : group ? "Crear reserva de grupo" : "Crear reserva"}
           </button>
           {canArrive && <button className="button secondary" value="in_house" disabled={busy || (group && !groupReady)}>
             {r?.status === "pending" ? "Confirmar y registrar llegada" : "Registrar llegada"}
-            {collect && " con pago"}
+            {collect && (arrivalMethod === "A/C CAMILO" ? " · A/C CAMILO" : " con pago")}
           </button>}
         </div>
         {!group && r?.status === "pending" && lodgingDue > 0 && (

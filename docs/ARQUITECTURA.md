@@ -49,6 +49,14 @@ El alta y la edición de grupos envían `room_assignments` con `room_id`, `pax` 
 
 ## Contratos API
 
+`GET /api/cash/camilo?month=AAAA-MM` requiere sesión de cualquier rol y devuelve `estimated_cents` y `reservations` con el detalle en Bs por mes de registro del abono. El método `A/C CAMILO` cubre exclusivamente hospedaje: participa en el saldo de la hoja y las noches cubiertas, pero queda fuera del libro de ingresos/egresos de Caja. El estimado suma importes vigentes retenidos y no concilia transferencias recibidas del intermediario. Los reembolsos de ese método se rechazan; las correcciones y anulaciones conservan la auditoría y actualizan el estimado. Las cancelaciones de reservas conservan esos registros hasta corregirlos o anularlos explícitamente.
+
+La migración 019 reconstruye `folio_payments` para ampliar la restricción de medios y limitar Camilo al hospedaje, conserva claves, turnos, índices y referencias, recrea `folio_payment_balances` y comprueba `foreign_key_check` dentro de la transacción. Respaldar con la aplicación detenida antes de migrar.
+
+`GET /api/reservations` añade `camilo` (existe cobertura vigente del intermediario) y `folio_balance_cents`, suma de cargos pendientes de todas las hojas de la reserva, calculada por las mismas reglas del detalle. El frontend usa ese saldo para el botón rojo de la hoja y mantiene el acceso a cuentas individuales.
+
+`POST /api/folios/:id/services/:serviceId/void` permite a todos los roles autenticados anular un consumo vinculado al Pub con motivo obligatorio. La migración 018 añade `folio_services.voided`; el cargo y su venta conservan sus identificadores. En una sola transacción valida pertenencia y ausencia de abonos retenidos, anula el cargo, restaura el stock y crea un movimiento de entrada y auditoría. No permite repetir la anulación ni abonar el cargo anulado. El historial del Pub marca la venta como anulada.
+
 Los productos del Pub guardan una foto JPEG por producto en `pop_product_photos`. El catálogo devuelve su revisión y la imagen se sirve por `GET /api/pub/:id/photo`. En una venta a cuenta, el movimiento se vincula a un servicio de la hoja en la misma transacción que descuenta el stock. Solo los pagos y devoluciones de ese servicio se contabilizan en Caja Pub.
 
 `DELETE /api/pub/:id` requiere permiso administrativo. Retira el producto del catálogo y elimina su foto, registrando la acción en auditoría. La fila del producto conserva su identificador para los movimientos históricos y no admite nuevas ventas ni ajustes de stock.

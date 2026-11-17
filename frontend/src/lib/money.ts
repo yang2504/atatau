@@ -4,6 +4,7 @@ const formatter = new Intl.NumberFormat("es-BO", {
 });
 export const money = (cents: number) => formatter.format(cents / 100);
 export const paymentMethods = ["Efectivo", "QR", "Transferencia", "Tarjeta", "Otro"];
+export const lodgingPaymentMethods = [...paymentMethods, "A/C CAMILO"];
 export const cardSurcharge = (base: number) => Math.floor((base * 5 + 50) / 100);
 export function cents(value: string) {
   if (!/^\d{1,9}([.,]\d{1,2})?$/.test(value))

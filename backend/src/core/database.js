@@ -151,6 +151,25 @@ export function openDatabase(
       db.exec("PRAGMA foreign_keys = ON");
     }
   }
+  if (db.prepare("PRAGMA user_version").get().user_version < 18) {
+    transaction(db, () => {
+      if (db.prepare("PRAGMA user_version").get().user_version >= 18) return;
+      db.exec(readFileSync(new URL("./018-pub-charge-void.sql", import.meta.url), "utf8"));
+      db.exec("PRAGMA user_version = 18");
+    });
+  }
+  if (db.prepare("PRAGMA user_version").get().user_version < 19) {
+    db.exec("PRAGMA foreign_keys = OFF");
+    try {
+      transaction(db, () => {
+        if (db.prepare("PRAGMA user_version").get().user_version >= 19) return;
+        db.exec(readFileSync(new URL("./019-camilo-payments.sql", import.meta.url), "utf8"));
+        if (db.prepare("PRAGMA foreign_key_check").get())
+          throw new Error("La migración 019 dejaría referencias sin resolver.");
+        db.exec("PRAGMA user_version = 19");
+      });
+    } finally { db.exec("PRAGMA foreign_keys = ON"); }
+  }
   db.prepare(
     "INSERT OR IGNORE INTO platforms (id,name,active) VALUES (1,'Sin reserva / directo',1),(2,'Booking',1),(3,'Hostelworld',1)",
   ).run();

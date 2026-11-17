@@ -9,7 +9,7 @@ import type { Data, User } from "../../lib/types";
 
 type Product = { id: number; name: string; stock: number; price_cents: number; active: number; category_id: number | null; low_stock: number; photo_revision: string | null };
 type Category = { id: number; name: string };
-type Movement = { id: number; day: string; kind: "sale" | "in" | "out"; detail: string; quantity: number; base_cents: number; author: string; folio_id: number | null; folio_title: string | null };
+type Movement = { id: number; day: string; kind: "sale" | "in" | "out"; detail: string; quantity: number; base_cents: number; author: string; folio_id: number | null; folio_title: string | null; charge_voided: number | null };
 type Removal = { target: "product"; item: Product } | { target: "category"; item: Category };
 const movementNames = { sale: "Venta", in: "Entrada", out: "Baja" };
 
@@ -274,7 +274,7 @@ export function Pop({ user, data, onSaved }: { user: User; data: Data; onSaved: 
           {!!movements.length && <div className="table-scroll"><table>
             <thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Unidades</th><th>Precio por unidad</th><th>Subtotal</th></tr></thead>
             <tbody>{movements.map((entry) => <tr key={entry.id}>
-              <td>{shortDate(entry.day)}</td><td>{entry.folio_id ? "A cuenta" : movementNames[entry.kind]}</td>
+              <td>{shortDate(entry.day)}</td><td>{entry.charge_voided ? "Anulado" : entry.folio_id ? "A cuenta" : movementNames[entry.kind]}</td>
               <td>{entry.detail}<small className="cell-sub">{entry.folio_id ? `Hoja #${entry.folio_id} · ${entry.folio_title} · ` : ""}{entry.author}</small></td><td>{entry.quantity}</td>
               <td>{entry.kind === "sale" ? money(entry.base_cents / entry.quantity) : "—"}</td>
               <td>{entry.kind === "sale" ? money(entry.base_cents) : "—"}</td>

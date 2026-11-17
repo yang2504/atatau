@@ -39,13 +39,24 @@ SELECT ledger.source,ledger.id,ledger.day,ledger.kind,ledger.detail,ledger.base_
   CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE COALESCE(t.user_name,u.name) END AS author
 FROM ledger JOIN users u ON u.id=ledger.user_id
 LEFT JOIN cash_turns t ON t.id=ledger.turn_id
-WHERE ledger.cash_box=? AND ${where}
+WHERE ledger.cash_box=? AND ledger.method<>'A/C CAMILO' AND ${where}
 ORDER BY ledger.day DESC,recorded_at DESC,ledger.source,ledger.id DESC`;
 
 const cashBox = (value) => choice(value ?? "petty", ["petty", "pub"], "Caja");
 
 export function cashModule(db, admin) {
   const router = Router();
+  router.get("/camilo", (req, res) => {
+    const month = req.query.month;
+    if (typeof month !== "string" || !/^\d{4}-\d{2}$/.test(month)) fail("Elige un mes válido.");
+    date(month + "-01");
+    const reservations = db.prepare(`SELECT r.id AS reservation_id,r.guest_name,r.check_in,r.check_out,
+      SUM(p.retained_cents) AS amount_cents FROM folio_payment_balances p
+      JOIN folios f ON f.id=p.folio_id JOIN reservations r ON r.id=f.reservation_id
+      WHERE p.method='A/C CAMILO' AND p.voided=0 AND p.day>=? AND p.day<? AND p.retained_cents>0
+      GROUP BY r.id ORDER BY r.check_in,r.id`).all(month + "-01", month + "-32");
+    res.json({ month, estimated_cents: reservations.reduce((sum, row) => sum + row.amount_cents, 0), reservations });
+  });
   const list = db.prepare(ledger("ledger.day>=? AND ledger.day<?"));
   const listTurn = db.prepare(ledger("ledger.turn_id=?"));
   const findEntry = db.prepare("SELECT id,day,kind,detail,base_cents,surcharge_cents,method,voided,cash_box,turn_id FROM cash_entries WHERE id=?");

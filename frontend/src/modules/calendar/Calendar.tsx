@@ -332,7 +332,7 @@ export function Calendar({
                             .map(({ label, name }) => `${label}: ${name}`).join(" · ");
                           const colors = visibleNights.map((day) => {
                             const status = paymentStatus(day);
-                            return status === "Pagada"
+                            return r.camilo ? "#ed6bc8" : status === "Pagada"
                               ? "#f6ac69"
                               : status === "Con saldo"
                                 ? "#ffdf78"
@@ -376,6 +376,7 @@ export function Calendar({
                               <span>
                                 <strong>{extra?.name ?? r.guest_name}</strong>
                                 <small>
+                                  {!!r.camilo && <span>A/C CAMILO · </span>}
                                   {r.status === "pending" && <span className="reservation-pending-label">Pend. </span>}
                                   {moved && <span>{span.ends_on === r.check_out ? "Traslado · " : "Anterior · "}</span>}
                                   {extra ? <span>Incorporación · </span> : place && <span>Grupo · </span>}
@@ -386,8 +387,9 @@ export function Calendar({
                             </button>
                             {(extendable || canOpenFolio) && <div className="reservation-actions" style={{ gridColumn: right + 1 }}>
                               {canOpenFolio && <button type="button"
-                                aria-label={`Abrir hoja de consumo de ${r.guest_name}`}
-                                title="Hojas de consumo" onClick={() => onFolio(r)}><Icon name="receipt" size={14} /></button>}
+                                className={r.folio_balance_cents > 0 ? "folio-has-debt" : undefined}
+                                aria-label={`Abrir hoja de consumo de ${r.guest_name}${r.folio_balance_cents > 0 ? " · Con saldo pendiente" : ""}`}
+                                title={r.folio_balance_cents > 0 ? "Hoja con saldo pendiente" : "Hojas de consumo"} onClick={() => onFolio(r)}><Icon name="receipt" size={14} /></button>}
                               {extendable && <button type="button"
                                 aria-label={`Alargar estadía de ${r.guest_name}`}
                                 title="Alargar estadía" onClick={() => onExtend(r)}><Icon name="plus" size={14} /></button>}
@@ -409,6 +411,8 @@ export function Calendar({
           <span><Icon name="receipt" size={13} /> Hojas de consumo</span>
           <span>R Reserva · E Entrada · S Salida</span>
           <span><i className="legend-dot pending" /> Reserva pendiente</span>
+          <span><i className="legend-dot camilo" /> A/C CAMILO</span>
+          <span><Icon name="receipt" size={13} /> Rojo: hoja con saldo</span>
           <span>
             <i className="legend-dot night-paid" />
             Noche pagada

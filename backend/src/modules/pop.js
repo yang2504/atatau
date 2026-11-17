@@ -54,7 +54,7 @@ export function popModule(db, admin) {
   });
   router.get("/movements", (req, res) => res.json(db.prepare(`
     SELECT m.id,m.product_id,m.day,m.kind,m.quantity,m.detail,m.base_cents,m.surcharge_cents,m.method,
-      s.folio_id,f.title AS folio_title,
+      s.folio_id,f.title AS folio_title,s.voided AS charge_voided,
       CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
     FROM pop_movements m JOIN users u ON u.id=m.user_id LEFT JOIN folio_services s ON s.id=m.folio_service_id
     LEFT JOIN folios f ON f.id=s.folio_id ORDER BY m.id DESC LIMIT 100

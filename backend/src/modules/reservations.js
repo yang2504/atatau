@@ -3,7 +3,7 @@ import { transaction } from "../core/database.js";
 import { MAX_NIGHTLY_CENTS, nightDates, nightRates, paidNights } from "./lodging.js";
 import { localDay } from "../core/charges.js";
 import { canSeeSuperadmin } from "./users.js";
-import { ensureReservationFolios, recordStayPayment, setNightlyRates } from "./folios.js";
+import { ensureReservationFolios, recordStayPayment, setNightlyRates, reservationFolioBalance } from "./folios.js";
 import {
   text,
   integer,
@@ -48,7 +48,9 @@ export function listReservations(db, full = 1) {
         creator.role AS creator_role,u.role AS check_in_role,closer.role AS check_out_role,
         (SELECT COALESCE(SUM(p.retained_cents),0) FROM folio_payment_balances p
           JOIN folios f ON f.id=p.folio_id WHERE f.reservation_id=r.id
-          AND p.lodging_day IS NOT NULL AND p.voided=0) AS lodging_paid_cents
+          AND p.lodging_day IS NOT NULL AND p.voided=0) AS lodging_paid_cents,
+        EXISTS(SELECT 1 FROM folio_payment_balances cp JOIN folios cf ON cf.id=cp.folio_id
+          WHERE cf.reservation_id=r.id AND cp.method='A/C CAMILO' AND cp.voided=0 AND cp.retained_cents>0) AS camilo
         FROM reservations r JOIN platforms p ON p.id=r.platform_id
         JOIN users creator ON creator.id=r.created_by
         LEFT JOIN audit_log creation ON creation.id=(
@@ -75,6 +77,7 @@ export function listReservations(db, full = 1) {
       checked_out_by_name: !full && check_out_role === "superadmin" ? "Atatau" : r.checked_out_by_name,
       night_rates: rates,
       paid_nights: paidNights(db, r.id, r.nightly_cents, rates),
+      folio_balance_cents: reservationFolioBalance(db, r.id),
       room_assignments: roomAssignments(db, r.id),
       added_guests: addedGuests(db, r.id),
       moves: movesFor(db, r.id),

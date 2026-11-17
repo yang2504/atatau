@@ -9,7 +9,7 @@ import {
   text,
 } from "../core/validation.js";
 import { lodgingShare, MAX_NIGHTLY_CENTS, nightDates, nightRates } from "./lodging.js";
-import { paymentMethods, cardSurcharge, localDay } from "../core/charges.js";
+import { lodgingPaymentMethods, cardSurcharge, localDay } from "../core/charges.js";
 import { canSeeSuperadmin } from "./users.js";
 import { turnFor } from "./shifts.js";
 
@@ -22,15 +22,21 @@ const folioQuery = `SELECT f.*, r.guest_name,r.pax,r.check_in,r.check_out,r.stat
 const MAX_STAY_CENTS = MAX_NIGHTLY_CENTS * 366;
 
 function paymentDetails(body) {
-  return { day: date(body.day), method: choice(body.method, paymentMethods, "Medio de pago") };
+  return { day: date(body.day), method: choice(body.method, lodgingPaymentMethods, "Medio de pago") };
 }
 
 function insertPayment(db, user, folioId, row, { day, method }, amount, surcharge, groupId = null, turnId = turnFor(db, user)) {
+  if (method === "A/C CAMILO" && !row.lodging_day) fail("A/C CAMILO solo cubre hospedaje.");
   const result = db.prepare(`INSERT INTO folio_payments
     (folio_id,lodging_day,service_id,day,amount_cents,method,user_id,surcharge_cents,group_id,turn_id)
     VALUES(?,?,?,?,?,?,?,?,?,?)`).run(folioId, row.lodging_day, row.service_id, day,
     amount, method, user.id, surcharge, groupId, turnId);
   return Number(result.lastInsertRowid);
+}
+
+export function reservationFolioBalance(db, reservationId) {
+  return db.prepare(`${folioQuery} WHERE f.reservation_id=?`).all(reservationId)
+    .reduce((sum, folio) => sum + entries(db, folio).reduce((due, row) => due + Math.max(0, row.balance_cents), 0), 0);
 }
 
 function paymentSnapshot(db, id, group = false) {
@@ -57,8 +63,9 @@ function entries(db, folio, full = 0) {
   const rows = db
     .prepare(
       `SELECT s.id AS service_id, NULL AS lodging_day, s.day, s.service,
-    s.detail, s.total_cents, CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
-    FROM folio_services s JOIN users u ON u.id=s.user_id WHERE s.folio_id=?`,
+    s.detail, s.total_cents, EXISTS(SELECT 1 FROM pop_movements m WHERE m.folio_service_id=s.id) AS pub_charge,
+    CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE u.name END AS author
+    FROM folio_services s JOIN users u ON u.id=s.user_id WHERE s.folio_id=? AND s.voided=0`,
     )
     .all(full, folio.id);
   const overrides = nightRates(db, folio.reservation_id);
@@ -108,6 +115,7 @@ function entries(db, folio, full = 0) {
         ...row,
         payments: matching,
         paid_cents: paid,
+        camilo_cents: matching.reduce((sum, p) => sum + (!p.voided && p.method === "A/C CAMILO" ? p.retained_cents : 0), 0),
         balance_cents: row.total_cents - paid,
       };
     });
@@ -199,6 +207,30 @@ function activePayment(db, folioId, id, group) {
 
 export function folioModule(db) {
   const router = Router();
+  router.post("/:id/services/:serviceId/void", (req, res) => {
+    transaction(db, () => {
+      const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
+      const id = integer(Number(req.params.serviceId), "Cargo");
+      const reason = text(req.body.reason, "Motivo", 160);
+      const before = db.prepare("SELECT * FROM folio_services WHERE id=? AND folio_id=? AND voided=0").get(id, folio.id);
+      if (!before) fail("Cargo vigente inexistente.", 404);
+      const movement = db.prepare("SELECT * FROM pop_movements WHERE folio_service_id=?").get(id);
+      if (!movement) fail("Solo se pueden quitar consumos vinculados al Pub.", 409);
+      if (db.prepare("SELECT 1 FROM folio_payment_balances WHERE service_id=? AND voided=0 AND retained_cents>0").get(id))
+        fail("El consumo tiene abonos. Registra primero su reembolso completo o solicita su anulación.", 409);
+      const product = db.prepare("SELECT stock FROM pop_products WHERE id=?").get(movement.product_id);
+      if (product.stock + movement.quantity > 1_000_000) fail("La devolución supera el límite de stock.", 409);
+      db.prepare("UPDATE folio_services SET voided=1 WHERE id=?").run(id);
+      db.prepare("UPDATE pop_products SET stock=stock+? WHERE id=?").run(movement.quantity, movement.product_id);
+      const restored = Number(db.prepare(`INSERT INTO pop_movements(product_id,day,kind,quantity,detail,user_id)
+        VALUES(?,?,'in',?,?,?)`).run(movement.product_id, localDay(), movement.quantity,
+          `Anulación de consumo #${id} · ${reason}`, req.user.id).lastInsertRowid);
+      audit(db, req.user, "void", "folio_service", id, before, { ...before, voided: 1, reason, stock_movement_id: restored });
+      audit(db, req.user, "create", "pop_movement", restored, { stock: product.stock },
+        { stock: product.stock + movement.quantity, service_id: id, reason });
+    });
+    res.json({ ok: true });
+  });
   router.patch("/:id/lodging-rate", (req, res) => {
     transaction(db, () => {
       const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
@@ -338,7 +370,8 @@ export function folioModule(db) {
       audit(db, req.user, "create", "folio_payment", id, null, paymentSnapshot(db, id));
       return id;
     });
-    res.status(201).json({ id, cash_cents: amount, surcharge_cents: surcharge, collected_cents: amount + surcharge });
+    const received = method === "A/C CAMILO" ? 0 : amount;
+    res.status(201).json({ id, cash_cents: received, surcharge_cents: surcharge, collected_cents: received + surcharge });
   });
   function voidPayment(req, res, group) {
     if (req.user.role === "receptionist")
@@ -369,6 +402,7 @@ export function folioModule(db) {
         fail("El medio de pago cambió. Vuelve a abrir la hoja antes de corregirlo.", 409);
       if (details.day === before.day && amount === before.amount_cents) {
         if (details.method === before.method) return paymentId;
+        if (details.method === "A/C CAMILO" && !payment.lodging_day) fail("A/C CAMILO solo cubre hospedaje.");
         if (group) db.prepare("UPDATE folio_payments SET method=? WHERE group_id=?").run(details.method, paymentId);
         db.prepare("UPDATE folio_payments SET method=?,surcharge_cents=? WHERE id=?")
           .run(details.method, cardSurcharge(amount, details.method), paymentId);
@@ -408,7 +442,9 @@ export function folioModule(db) {
     const amount = integer(req.body.amount_cents, "Reembolso", 1, MAX_STAY_CENTS);
     const reason = text(req.body.reason, "Motivo", 160);
     const id = transaction(db, () => {
-      activePayment(db, folioId, paymentId, group);
+      const payment = activePayment(db, folioId, paymentId, group);
+      if (payment.method === "A/C CAMILO")
+        fail("Este importe está a cargo de Camilo y no se recibió en caja. Corrige el registro o solicita su anulación.", 409);
       const payments = db.prepare(`SELECT id,retained_cents FROM folio_payment_balances
         WHERE ${group ? "group_id" : "id"}=? AND voided=0 AND retained_cents>0 ORDER BY id DESC`).all(paymentId);
       const available = payments.reduce((sum, item) => sum + item.retained_cents, 0);

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorBox, Icon, Modal } from "../../components/UI";
 import { addDays, api, daysBetween, shortDate, statusNames, today } from "../../lib/api";
-import { cents, money, paymentMethods } from "../../lib/money";
+import { cents, money, paymentMethods, lodgingPaymentMethods } from "../../lib/money";
 import { CardCharge } from "../../components/CardCharge";
 import { ReservationStaff } from "../reservations/ReservationStaff";
 import type { Data, Folio, FolioEntry, Payment, StayPayment, User } from "../../lib/types";
@@ -31,6 +31,7 @@ export function FolioSheet({
   const [amountText, setAmountText] = useState("");
   const [refundText, setRefundText] = useState("");
   const [voiding, setVoiding] = useState<number | null>(null);
+  const [removing, setRemoving] = useState<FolioEntry | null>(null);
   const [onlyDue, setOnlyDue] = useState(false);
   const [showService, setShowService] = useState(false);
   const [payStay, setPayStay] = useState(false);
@@ -150,8 +151,8 @@ export function FolioSheet({
           }}>
           Editar abono
         </button>}
-        <button type="button" className="button secondary compact" disabled={busy}
-          onClick={() => { closePayment(); setRefundText(""); setRefunding({ payment: record, group }); }}>Reembolsar</button>
+        {record.method !== "A/C CAMILO" && <button type="button" className="button secondary compact" disabled={busy}
+          onClick={() => { closePayment(); setRefundText(""); setRefunding({ payment: record, group }); }}>Reembolsar</button>}
         {!canCorrect && <small>Este abono ya tiene reembolsos.</small>}
         {canCorrect && user.role !== "receptionist" && <button type="button" className="text-button" disabled={busy}
           onClick={() => {
@@ -168,6 +169,7 @@ export function FolioSheet({
   const base = /^\d{1,9}([.,]\d{1,2})?$/.test(amountText) ? cents(amountText) : 0;
   const refundAmount = /^\d{1,9}([.,]\d{1,2})?$/.test(refundText) ? cents(refundText) : 0;
   const balance = total("balance_cents");
+  const camiloTotal = entries?.reduce((sum, row) => sum + row.camilo_cents, 0) ?? 0;
   const stayBalance = entries?.reduce((sum, row) => sum + (row.lodging_day ? row.balance_cents : 0), 0) ?? 0;
   const arrival = folio.joined_on ?? folio.check_in;
   const nights = daysBetween(arrival, folio.check_out);
@@ -187,10 +189,11 @@ export function FolioSheet({
         </div>
         {entries && <dl className="folio-summary" aria-label="Resumen de la cuenta">
           <div><dt>Total de cargos</dt><dd>{money(total("total_cents"))}</dd></div>
-          <div><dt>Abonos registrados</dt><dd>{money(total("paid_cents"))}</dd></div>
-          <div className={balance > 0 ? "folio-balance-due" : ""}>
+          <div><dt>{camiloTotal > 0 ? "Abonos y cobertura" : "Abonos registrados"}</dt><dd>{money(total("paid_cents"))}</dd></div>
+          {camiloTotal > 0 && <div><dt>A/C CAMILO · Hospedaje</dt><dd>{money(camiloTotal)}</dd></div>}
+          {(balance > 0 || !camiloTotal) && <div className={balance > 0 ? "folio-balance-due" : ""}>
             <dt>{balance > 0 ? "Saldo pendiente" : "Saldo"}</dt><dd>{money(balance)}</dd>
-          </div>
+          </div>}
         </dl>}
       </div>
       {reservation && <details className="folio-staff">
@@ -203,8 +206,25 @@ export function FolioSheet({
           hospedaje.
         </p>
       )}
-      {!refunding && !payment && !editing && !payStay && <ErrorBox message={error} />}
+      {!refunding && !payment && !editing && !payStay && !removing && <ErrorBox message={error} />}
       <p className="folio-feedback" role="status">{notice}</p>
+      {removing && <Modal title="Quitar consumo del Pub" onClose={() => { if (!busy) setRemoving(null); }}>
+        <form className="form-stack" onSubmit={(event) => {
+          event.preventDefault();
+          const values = new FormData(event.currentTarget);
+          void save(`/services/${removing.service_id}/void`, () => ({ reason: values.get("reason") }),
+            () => setRemoving(null), "POST", "Consumo anulado. Se devolvieron las unidades al stock del Pub.");
+        }}>
+          <ErrorBox message={error} />
+          <p><strong>{removing.detail} · {money(removing.total_cents)}</strong></p>
+          <p>Se quitará el cargo de esta hoja y sus unidades volverán al stock. El historial conservará la anulación.</p>
+          <label>Motivo<input name="reason" maxLength={160} required autoFocus /></label>
+          <div className="modal-actions">
+            <button type="button" className="button secondary" disabled={busy} onClick={() => setRemoving(null)}>Cancelar</button>
+            <button className="button primary" disabled={busy}>Confirmar y quitar consumo</button>
+          </div>
+        </form>
+      </Modal>}
       {!entries && !error && <p role="status">Cargando movimientos…</p>}
       {entries && (
         <section className="folio-movements">
@@ -323,7 +343,7 @@ export function FolioSheet({
                   Medio de pago
                   <select name="method" value={paymentMethod} required onChange={(event) => setPaymentMethod(event.target.value)}>
                     <option value="" disabled>Selecciona cómo se pagó</option>
-                    {paymentMethods.map(
+                    {(payment?.service_id || editing?.payment.service_id ? paymentMethods : lodgingPaymentMethods).map(
                       (method) => (
                         <option key={method}>{method}</option>
                       ),
@@ -420,8 +440,8 @@ export function FolioSheet({
                     {!!row.stay_paid_cents && <small className="cell-sub">Incluido en cobro de estadía</small>}
                   </td>
                   <td role="cell" className={`folio-amount${row.balance_cents > 0 ? " folio-row-due" : ""}`} data-label="Saldo">
-                    <strong>{money(row.balance_cents)}</strong>
-                    <small className="cell-sub">{row.balance_cents > 0 ? "Pendiente de pago" : row.total_cents === 0 ? "Sin cargo" : "Pagado"}</small>
+                    <strong>{row.balance_cents === 0 && row.camilo_cents > 0 ? "A/C CAMILO" : money(row.balance_cents)}</strong>
+                    <small className="cell-sub">{row.balance_cents > 0 ? "Pendiente de pago" : row.camilo_cents > 0 ? "Hospedaje cubierto" : row.total_cents === 0 ? "Sin cargo" : "Pagado"}</small>
                   </td>
                   <td role="cell" className="folio-operators">
                     {row.author && <span className="folio-operator">Registro · {row.author}</span>}
@@ -429,6 +449,11 @@ export function FolioSheet({
                     {!row.author && !cashiers.length && "—"}
                   </td>
                   <td role="cell" className="folio-charge-actions">
+                    {!!row.pub_charge && <button type="button" className="button secondary compact"
+                      disabled={busy || row.paid_cents > 0} title={row.paid_cents > 0 ? "Reembolsa o anula primero los abonos del consumo." : undefined}
+                      onClick={() => { closePayment(); setRemoving(row); }}>
+                      Quitar consumo
+                    </button>}
                     {!cancelled && row.balance_cents > 0 && (
                       <button
                         type="button"
@@ -473,7 +498,7 @@ export function FolioSheet({
           <h4>Cobros de estadía</h4>
           {details.stay_payments.map((record) => <article key={record.id} className="folio-history-item">
             <strong>{money(record.amount_cents)} · {record.method}</strong>
-            <p>{shortDate(record.day)} · Cobrado por <strong>{record.author}</strong>{record.voided ? " · Anulado" : ""}</p>
+            <p>{shortDate(record.day)} · {record.method === "A/C CAMILO" ? "Registrado por" : "Cobrado por"} <strong>{record.author}</strong>{record.voided ? " · Anulado" : ""}</p>
             {record.retained_cents < record.amount_cents && <p>Reembolsado {money(record.amount_cents - record.retained_cents)}</p>}
             {record.folio_cents !== record.amount_cents && <p>Aplicado a esta hoja {money(record.folio_cents)}</p>}
             {record.surcharge_cents > 0 && <p>Comisión {money(record.surcharge_cents)} · Cobrado {money(record.amount_cents + record.surcharge_cents)}</p>}
