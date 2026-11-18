@@ -210,7 +210,7 @@ function moveReservation(db, id, body, user) {
   });
 }
 
-export function saveReservation(db, body, user, id = null, extension = false) {
+export function saveReservation(db, body, user, id = null, extension = false, operational = false) {
   return transaction(db, () => {
     const previous = id
       ? db.prepare("SELECT * FROM reservations WHERE id=?").get(id)
@@ -219,6 +219,18 @@ export function saveReservation(db, body, user, id = null, extension = false) {
     const previousRooms = previous ? roomAssignments(db, id) : [];
     const extras = previous ? addedGuests(db, id) : [];
     const moves = previous ? movesFor(db, id) : [];
+    if (previous && !extension && !operational && user.role !== "superadmin")
+      fail("Solo el superadministrador puede corregir o cancelar reservas.", 403);
+    if (operational) {
+      const allowed = previous.status === "pending" ? ["confirmed", "in_house"]
+        : previous.status === "confirmed" ? ["in_house"] : previous.status === "in_house" ? ["checked_out"] : [];
+      const payingStay = body.stay_payment && body.status === previous.status && previous.status !== "cancelled";
+      if (!allowed.includes(body.status) && !payingStay && !(previous.status === "pending" && body.status === "pending" && body.advance_payment))
+        fail("Esta operación no está disponible para la reserva.", 409);
+      body = { ...previous, status: body.status, check_in_payment: body.check_in_payment, advance_payment: body.advance_payment, stay_payment: body.stay_payment,
+        room_assignments: previousRooms.length ? previousRooms : undefined,
+        unit_ids: db.prepare("SELECT unit_id FROM allocations WHERE reservation_id=?").all(id).map((row) => row.unit_id) };
+    }
     let extensionRate;
     if (extension) {
       if (!["pending", "confirmed", "in_house"].includes(previous.status))
@@ -318,6 +330,9 @@ export function saveReservation(db, body, user, id = null, extension = false) {
     const directToday = !previous && platformId === 1 && start === operationDay;
     const status = directToday && requestedStatus === "confirmed" ? "in_house" : requestedStatus;
     const arrivalPayment = body.check_in_payment;
+    const stayPayment = body.stay_payment;
+    if (stayPayment != null && status === "cancelled")
+      fail("No puedes cobrar una reserva cancelada.", 409);
     if (arrivalPayment != null && (status !== "in_house" ||
         !(directToday || ["pending", "confirmed"].includes(previous?.status))))
       fail("El cobro de la estadía solo se registra al confirmar la llegada.", 409);
@@ -328,7 +343,7 @@ export function saveReservation(db, body, user, id = null, extension = false) {
     if (advance != null && !canAdvance)
       fail(group ? "Registra nuevos abonos desde la hoja de consumo del grupo."
         : "El adelanto se registra en una reserva pendiente.", 409);
-    if (advance != null && arrivalPayment != null)
+    if ([advance, arrivalPayment, stayPayment].filter((payment) => payment != null).length > 1)
       fail("Registra un solo cobro al crear la reserva.", 409);
     const breakfast = integer(body.breakfast ?? previous?.breakfast ?? 0, "Desayuno", 0, 1);
     const mode = choice(
@@ -542,7 +557,7 @@ export function saveReservation(db, body, user, id = null, extension = false) {
     const allocate = db.prepare("INSERT INTO allocations(reservation_id,unit_id,pax) VALUES(?,?,?)");
     for (const unit of units)
       allocate.run(id, unit.id, group ? (unit.type === "dorm" ? 1 : places.get(unit.room_id).count) : null);
-    if (group || ["confirmed", "in_house", "checked_out"].includes(status) || advance != null)
+    if (group || ["confirmed", "in_house", "checked_out"].includes(status) || advance != null || stayPayment != null)
       ensureReservationFolios(db, id, mode, sharedTitle, user);
     if (datesChanged && (extension || Object.keys(originalRates).length)) {
       db.prepare("DELETE FROM reservation_night_rates WHERE reservation_id=?").run(id);
@@ -564,6 +579,10 @@ export function saveReservation(db, body, user, id = null, extension = false) {
     if (!previous && checkingOut) audit(db, user, "check_out", "reservation", id, null, after);
     if (arrivalPayment != null) {
       recordStayPayment(db, id, { ...arrivalPayment, day: operationDay }, user, arrivalPayment.amount_cents);
+    }
+    if (stayPayment != null) {
+      const expected = integer(stayPayment.amount_cents, "Saldo de hospedaje", 1, Number.MAX_SAFE_INTEGER);
+      recordStayPayment(db, id, { ...stayPayment, day: operationDay, full_stay: true }, user, expected);
     }
     if (advance != null) {
       const expected = integer(advance.expected_balance_cents, "Saldo esperado", 1, Number.MAX_SAFE_INTEGER);
@@ -611,6 +630,9 @@ export function reservationModule(db) {
   );
   router.post("/:id/extend", (req, res) =>
     res.json(saveReservation(db, req.body, req.user, integer(Number(req.params.id), "Reserva"), true)),
+  );
+  router.post("/:id/operation", (req, res) =>
+    res.json(saveReservation(db, req.body, req.user, integer(Number(req.params.id), "Reserva"), false, true)),
   );
   router.post("/:id/guests", (req, res) =>
     res.status(201).json(addGuest(db, integer(Number(req.params.id), "Reserva"), req.body, req.user)),

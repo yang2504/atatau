@@ -3,7 +3,7 @@ import { ErrorBox, Icon, Modal } from "../../components/UI";
 import { CardCharge } from "../../components/CardCharge";
 import { api, localDateTime, shortDate, today } from "../../lib/api";
 import { cents, money, paymentMethods } from "../../lib/money";
-import type { User } from "../../lib/types";
+import type { Data, User } from "../../lib/types";
 
 type Entry = {
   source: "manual" | "folio" | "stay" | "pop" | "refund";
@@ -11,6 +11,8 @@ type Entry = {
   day: string;
   kind: "income" | "expense";
   detail: string;
+  accommodation: string | null;
+  reservation_id: number | null;
   base_cents: number;
   physical_cents: number;
   surcharge_cents: number;
@@ -26,13 +28,13 @@ type Turn = {
 type HistoricalTurn = Turn & { id: number; started_at: string; expires_at: string };
 type CamiloEstimate = {
   estimated_cents: number;
-  reservations: { reservation_id: number; guest_name: string; check_in: string; check_out: string; amount_cents: number }[];
+  reservations: { reservation_id: number; guest_name: string; accommodation: string | null; check_in: string; check_out: string; amount_cents: number }[];
 };
 const outsideSchedule = (turn: Turn) => /^(outside|extra):/.test(turn.window_key ?? "");
 const sources = { manual: "Manual", folio: "Hoja de consumo", stay: "Cobro de estadía", pop: "Venta Pub", refund: "Reembolso" };
 const transferMethods = paymentMethods.filter((method) => method !== "Efectivo");
 
-export function Cash({ user }: { user: User }) {
+export function Cash({ user, revision, onReservation }: { user: User; revision: Data; onReservation: (id: number) => void }) {
   const admin = user.role !== "receptionist";
   const [box, setBox] = useState<"petty" | "pub">("petty");
   const boxLabel = box === "pub" ? "Caja Pub" : "Caja Chica";
@@ -42,6 +44,7 @@ export function Cash({ user }: { user: User }) {
   const [camilo, setCamilo] = useState<CamiloEstimate | null>(null);
   const [movementKind, setMovementKind] = useState<Entry["kind"] | null>(null);
   const [voiding, setVoiding] = useState<Entry | null>(null);
+  const [editing, setEditing] = useState<Entry | null>(null);
   const [notice, setNotice] = useState("");
   const [account, setAccount] = useState<"cash" | "transfer">("cash");
   const [transferMethod, setTransferMethod] = useState("QR");
@@ -76,6 +79,7 @@ export function Cash({ user }: { user: User }) {
     if (next === "history") void loadTurns();
   }
   function openMovement(kind: Entry["kind"]) {
+    setEditing(null);
     setError("");
     setNotice("");
     setAmount("");
@@ -102,7 +106,7 @@ export function Cash({ user }: { user: User }) {
       if (active) setError(error.message);
     });
     return () => { active = false; };
-  }, [path, version]);
+  }, [path, version, revision]);
   useEffect(() => {
     if (view !== "camilo") return;
     let active = true;
@@ -112,7 +116,7 @@ export function Cash({ user }: { user: User }) {
       if (active) setCamilo(result);
     }).catch((error) => { if (active) setError(error.message); });
     return () => { active = false; };
-  }, [view, month, version]);
+  }, [view, month, version, revision]);
   useEffect(() => {
     if (view !== "current" || !turn?.refresh_at) return;
     const timer = window.setTimeout(() => setVersion((value) => value + 1),
@@ -150,13 +154,14 @@ export function Cash({ user }: { user: User }) {
     setBusy(true);
     setError("");
     try {
-      await api("/cash", { day: values.get("day") ?? today(), detail: values.get("detail"), kind: movementKind, method, base_cents: cents(amount), cash_box: box });
+      await api(editing ? `/cash/${editing.id}` : "/cash", { day: values.get("day") ?? today(), detail: values.get("detail"), kind: movementKind, method, base_cents: cents(amount), cash_box: box }, editing ? "PATCH" : "POST");
       form.reset();
       setAmount("");
       setAccount(method === "Efectivo" ? "cash" : "transfer");
       setMovementFilter(movementKind ?? "all");
       setMovementKind(null);
-      setNotice(movementKind === "expense" ? "Egreso registrado." : "Ingreso registrado.");
+      setNotice(editing ? "Movimiento corregido." : movementKind === "expense" ? "Egreso registrado." : "Ingreso registrado.");
+      setEditing(null);
       setVersion((v) => v + 1);
     } catch (error) {
       setError((error as Error).message);
@@ -215,7 +220,8 @@ export function Cash({ user }: { user: User }) {
         {!!camilo?.reservations.length && <div className="table-scroll"><table>
           <thead><tr><th>Reserva y huésped</th><th>Estadía</th><th>Importe estimado</th></tr></thead>
           <tbody>{camilo.reservations.map((row) => <tr key={row.reservation_id}>
-            <td><strong>#{row.reservation_id} · {row.guest_name}</strong></td>
+            <td><strong>#{row.reservation_id} · {row.guest_name}</strong><small className="cell-sub">{row.accommodation}</small>
+              <button className="text-button" onClick={() => onReservation(row.reservation_id)}>Abrir hoja</button></td>
             <td>{shortDate(row.check_in, true)} → {shortDate(row.check_out, true)}</td>
             <td><strong>{money(row.amount_cents)}</strong></td>
           </tr>)}</tbody>
@@ -283,31 +289,34 @@ export function Cash({ user }: { user: User }) {
         {visibleEntries?.length === 0 && <p className="quiet-state">{accountEntries?.length ? "No hay movimientos de este tipo." : "Aún no hay movimientos en esta cuenta."}</p>}
         {!!visibleEntries?.length && <div className="table-scroll">
           <table>
-            <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe base</th>{admin && <th>Acción</th>}</tr></thead>
+            <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe base</th>{user.role === "superadmin" && <th>Acción</th>}</tr></thead>
             <tbody>{visibleEntries.map((row) => <tr key={`${row.source}-${row.id}`} className={row.voided ? "void-row" : row.kind === "expense" ? "ledger-expense-row" : undefined}>
               <td>{shortDate(row.day, byTurn)}{row.recorded_at && <small className="cell-sub">Registro {localDateTime(row.recorded_at)}</small>}</td>
               <td><span className={`tag ledger-kind ${row.kind}`}>{row.kind === "expense" ? "Egreso" : "Ingreso"}</span>
-                <strong>{row.detail}</strong><small className="cell-sub">
+                <strong>{row.detail}</strong>{row.accommodation && <small className="cell-sub"><strong>{row.accommodation}</strong></small>}<small className="cell-sub">
                   {box === "pub" && row.source === "manual" && row.kind === "income" ? "Ingreso manual histórico" : sources[row.source]}
-                  {" · "}{row.author}{row.voided ? " · Anulado" : ""}</small></td>
+                  {" · "}{row.author}{row.voided ? " · Anulado" : ""}</small>
+                {row.reservation_id && <button className="text-button" onClick={() => onReservation(row.reservation_id!)}>Abrir hoja</button>}</td>
               <td>{row.method}</td>
               <td><strong>{row.kind === "expense" ? "−" : "+"}{money(row.base_cents)}</strong>
                 {row.surcharge_cents > 0 && <small className="cell-sub">
                   {row.method === "Tarjeta" ? "Comisión descontada" : "Recargo histórico"} {money(row.surcharge_cents)}
                 </small>}
               </td>
-              {admin && <td>{row.source === "manual" && !row.voided && <button className="text-button" disabled={busy}
-                onClick={() => { setError(""); setVoiding(row); }}>Anular</button>}</td>}
+              {user.role === "superadmin" && <td>{row.source === "manual" && !row.voided && <div className="row-actions">
+                <button className="text-button" disabled={busy} onClick={() => { openMovement(row.kind); setEditing(row); setAmount((row.base_cents / 100).toFixed(2)); setTransferMethod(row.method); }}>Editar</button>
+                <button className="text-button" disabled={busy} onClick={() => { setError(""); setVoiding(row); }}>Anular</button>
+              </div>}</td>}
             </tr>)}</tbody>
           </table>
         </div>}
       </section>}
-      {movementKind && <Modal title={`${movementKind === "expense" ? "Registrar egreso" : "Registrar ingreso"} · ${boxLabel}`}
+      {movementKind && <Modal title={`${editing ? "Corregir movimiento" : movementKind === "expense" ? "Registrar egreso" : "Registrar ingreso"} · ${boxLabel}`}
         className="cash-dialog" onClose={() => { if (!busy) { setError(""); setMovementKind(null); } }}>
         <ErrorBox message={error} />
         <form className="form-stack" onSubmit={record}>
-          {admin && <label>Fecha<input type="date" name="day" defaultValue={today()} required /></label>}
-          <label>Concepto<input name="detail" placeholder="Ej. Compra de insumos" maxLength={160} required /></label>
+          {admin && <label>Fecha<input type="date" name="day" defaultValue={editing?.day ?? today()} required /></label>}
+          <label>Concepto<input name="detail" defaultValue={editing?.detail} placeholder="Ej. Compra de insumos" maxLength={160} required /></label>
           <label>Importe base (Bs)<input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" pattern="[0-9]{1,7}([.,][0-9]{1,2})?" required /></label>
           <label>Medio de pago<select value={method} onChange={(e) => setTransferMethod(e.target.value)}>
             {paymentMethods.map((item) => <option key={item}>{item}</option>)}
@@ -315,7 +324,7 @@ export function Cash({ user }: { user: User }) {
           {movementKind === "income" && method === "Tarjeta" && <CardCharge base={base} />}
           <div className="modal-actions">
             <button className="button secondary" type="button" disabled={busy} onClick={() => { setError(""); setMovementKind(null); }}>Cancelar</button>
-            <button className="button primary" disabled={busy || !base}>{movementKind === "expense" ? "Guardar egreso" : "Guardar ingreso"}</button>
+            <button className="button primary" disabled={busy || !base}>{editing ? "Guardar corrección" : movementKind === "expense" ? "Guardar egreso" : "Guardar ingreso"}</button>
           </div>
         </form>
       </Modal>}

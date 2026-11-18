@@ -113,3 +113,17 @@ No hay cifrado del archivo SQLite: la protección del equipo y los respaldos sig
 Esquema inicial en `backend/src/core/schema.sql`. Las migraciones usan transacciones y `PRAGMA user_version`. La 002 reconstruye la tabla de reservas conservando sus claves y valida referencias con `foreign_key_check` antes de confirmar. La 003 agrega el enlace de respuesta en Novedades cuando falta. Respaldar la base antes de actualizar. `ATATAU_DB` permite bases temporales para pruebas.
 
 Los abonos vigentes bloquean eliminar una fecha pagada en parte o por completo y modificar su tarifa. El API valida el saldo y escribe el abono dentro de una transacción. La comisión de tarjeta se guarda aparte del principal. Caja consulta el importe base en hojas, ventas POP e ingresos manuales. Los reembolsos registran una salida en el turno actual por el medio original y reducen el importe retenido en la hoja. Quedan pendientes el conteo físico para arqueo y la integración real de canales.
+
+## 2026-11-18 — Operación y correcciones
+
+`PUT /api/reservations/:id` requiere superadministrador, incluidas cancelación y reactivación. `POST /api/reservations/:id/operation` permite a todos los roles confirmar, registrar llegada/salida y adelantos pendientes. Reconstruye los campos persistidos dentro de la transacción e ignora cambios generales del cuerpo: únicamente aplica la transición y sus cobros. Las rutas de ampliación, incorporación y traslado conservan el acceso diario.
+
+Las rutas PATCH y de anulación de hojas requieren superadministrador. Se conservan cobros y reembolsos para todos los roles. `PATCH /api/cash/:id` corrige fecha, concepto, importe y medio de un movimiento manual activo, recalcula comisión y conserva autor/turno; requiere superadministrador, como su anulación. Todos los cambios guardan auditoría.
+
+Las consultas de Caja añaden `reservation_id` y `accommodation` (nulos para movimientos sin reserva), y el estimado Camilo añade `accommodation`. La ubicación usa los lugares distintos de `reservation_occupancy`, incluidos grupos, incorporaciones y traslados; no implica una foto histórica del alojamiento al instante del cobro. No cambia el esquema ni requiere migración. Estas reglas reemplazan las menciones anteriores de edición/anulación por administración o recepción.
+
+## 2026-11-18 — Pago completo de hospedaje
+
+`POST /api/folios/:id/stay-payments` acepta `scope: "folio"` para cobrar todas las noches pendientes de una hoja, conjunta o individual. `full_stay: true` exige que el importe coincida con todo su saldo de hospedaje. Se conserva el alcance anterior de reserva de grupo si se omite scope. `expected_balance_cents` se valida dentro de la transacción; un cambio de saldo o un reintento del cobro se rechaza sin escrituras parciales. No incluye servicios. Las correcciones de un cobro conjunto conservan sus hojas destinatarias.
+
+Las altas y operaciones de reserva aceptan `stay_payment: {method, amount_cents}`. Es un pago completo de todas las hojas de esa reserva, con saldo recalculado por el backend, fecha local y recibo agrupado. Se puede guardar sin cambiar estado, junto a una confirmación o con una salida. No se permite en canceladas ni combinado con adelanto o cobro de entrada. Recepción conserva el permiso para cobrar; corregir/anular sigue reservado al superadministrador. La reserva, transición, aplicaciones por noche, caja y auditoría se escriben en la misma transacción. Reutiliza las tablas actuales: no hay migración.

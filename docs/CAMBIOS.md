@@ -1,5 +1,30 @@
 # Cambios y decisiones importantes
 
+## 2026-11-18 — Versión v1.15.0 para Windows
+
+- Integra el calendario compacto, la ubicación de hospedaje en Caja, las correcciones/anulaciones exclusivas del superadministrador y Pagar estadía completa desde reserva y hoja.
+- Se identifica con la etiqueta Git v1.15.0, el ZIP Hostel-Atatau-Windows-x64-v1.15.0.zip y VERSION.txt dentro del paquete. Se mantiene la aplicación local con Node.js incluido y la base existente fuera del ZIP.
+- Validación de entrega: npm test, npm run check, compilación del empaquetador y prueba de arranque del ZIP con una base temporal. Esta entrega no añade migraciones; antes de actualizar recepción, detener Atatau y respaldar la carpeta de datos.
+- Pendiente después de publicar: descargar, extraer y abrir esta versión en la instalación personal. Los registros reales de prueba no se borran durante la actualización.
+
+## 2026-11-18 — Pagar estadía completa desde reserva y hoja
+
+- Se añadió Pagar estadía completa a las hojas conjuntas e individuales, con importe precargado, noches, medio de pago y confirmación. Suma únicamente hospedaje pendiente y descuenta lo abonado; los consumos siguen separados. La cuenta individual paga solo sus propias noches.
+- Crear o abrir una reserva ofrece el pago completo de todas sus hojas, sin obligar a registrar llegada. Se conserva el cobro al entrar y se puede Registrar salida y pagar estadía en un paso. Recepción dispone de estas operaciones diarias sin permiso de corrección.
+- Se reutilizó el recibo agrupado: cada noche recibe su parte, Caja registra un solo movimiento y tarjeta calcula una sola comisión. A/C CAMILO conserva su tratamiento de estimado. Las correcciones autorizadas no trasladan dinero a otras hojas.
+- Pasaron npm test (11 pruebas), npm run check y npm run build. La prueba nueva cubre pago anticipado, saldo parcial anterior, cuentas individuales, servicios separados, duplicados, importes desactualizados, comisión, corrección por rol, salida con pago atómica y Camilo. En navegador con cuenta de recepción se verificó la suma de tres noches, el descuento de un abono anterior, el pago desde la hoja y el alta de una reserva futura pagada sin llegada y la salida con pago completo en un paso. Se usó exclusivamente una base temporal con ATATAU_DB; producción no se modificó.
+- No requiere migración ni dependencias nuevas. Pendiente: actualizar la instalación personal de recepción.
+
+## 2026-11-18 — Calendario compacto, ubicación en Caja y correcciones protegidas
+
+- Se retiró el encabezado grande de Calendario y se trasladó Nueva reserva a los filtros para ampliar el espacio de resumen y cuadrícula. Se redujeron ligeramente letras, columnas, fechas y filas; cuartos y camas conservan contraste y negrita. La vista abre con 14 días y permite 7, 14 o 21. Ampliar mantiene la opción de ocultar el resumen.
+- Una reserva pendiente con llegada anterior a hoy en Bolivia y sin entrada registrada se muestra en verde claro, con texto Sin llegada. El indicador no cambia su estado ni libera automáticamente disponibilidad; una confirmación o entrada elimina ese indicador.
+- Caja muestra los lugares de la reserva: privada o dormitorio/cama, también en reembolsos y A/C CAMILO. Grupos y traslados reúnen sus lugares sin duplicados. Los registros sin reserva no inventan una ubicación. Abrir hoja permite revisar los cobros y vuelve a cargar Caja tras corregirlos.
+- Recepción y administración conservan altas, confirmación, entradas, salidas, ampliaciones, traslados, cobros y devoluciones. La API y la interfaz reservan al superadministrador la edición general/cancelación/reactivación de reservas, ajustes de tarifa y correcciones/anulaciones de cargos y abonos. La ruta de operación diaria reconstruye los datos persistidos dentro de la transacción y solo aplica la transición y sus cobros.
+- El superadministrador puede editar movimientos manuales activos desde Caja y anularlos. Una corrección conserva turno/autor y deja auditoría. Los cobros automáticos se corrigen en la hoja; la anulación de A/C CAMILO retira su importe del estimado sin borrar historial.
+- Pasaron npm test (10 pruebas), npm run check, npm run build y git diff --check. Se cubrieron denegaciones para recepción y administración, protección frente a campos adicionales en operaciones diarias, conservación de turnos/autores y ubicación de privadas, grupos, camas y reembolsos. Revisión visual en 1366×768 y 390×844, sin desborde de página, con base ficticia temporal indicada por ATATAU_DB. Se comprobó llegada desde recepción, bloqueo de correcciones y actualización del estimado al anular Camilo como superadministrador. El detector de diseño señaló tres bordes existentes fuera de los ajustes realizados; no se rediseñaron esas superficies.
+- No cambia el esquema ni necesita migración. No se tocó la base real. Pendiente: identificar por número las reservas de prueba de A/C CAMILO en recepción y anular sus abonos/cancelar sus reservas desde el superadministrador; actualizar la instalación personal. No se añadió borrado físico ni limpieza masiva, para conservar hojas, auditoría y demás historial.
+
 ## 2026-11-17 — A/C CAMILO y alerta de saldo en calendario
 
 - A/C CAMILO se puede elegir al registrar el hospedaje de entrada. El importe en Bs escrito por recepción cubre el hospedaje del huésped y aparece en fucsia en el calendario. La hoja muestra la cobertura del intermediario sin deuda por ese importe. Los cargos adicionales mantienen su saldo y cobro habituales.

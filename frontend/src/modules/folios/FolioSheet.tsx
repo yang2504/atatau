@@ -35,6 +35,7 @@ export function FolioSheet({
   const [onlyDue, setOnlyDue] = useState(false);
   const [showService, setShowService] = useState(false);
   const [payStay, setPayStay] = useState(false);
+  const [payFullStay, setPayFullStay] = useState(false);
   const [showRate, setShowRate] = useState(false);
   const [notice, setNotice] = useState("");
   const historyHeading = useRef<HTMLHeadingElement>(null);
@@ -107,6 +108,8 @@ export function FolioSheet({
         method: values.get("method"),
         amount_cents: cents(String(values.get("amount"))),
         expected_balance_cents: payStay ? stayBalance : undefined,
+        scope: payStay ? "folio" : undefined,
+        full_stay: payStay && payFullStay ? true : undefined,
         expected_method: editing?.payment.method,
       }),
       closePayment,
@@ -121,6 +124,7 @@ export function FolioSheet({
     setError("");
     setShowRate(false);
     setPayStay(false);
+    setPayFullStay(false);
     setEditing(null);
     setPayment(null);
     setVoiding(null);
@@ -141,7 +145,7 @@ export function FolioSheet({
     const canCorrect = record.retained_cents === record.amount_cents;
     return (
       <div className="row-actions">
-        {canCorrect && <button
+        {canCorrect && user.role === "superadmin" && <button
           type="button" className="button secondary compact" disabled={busy}
           onClick={() => {
             closePayment();
@@ -154,7 +158,7 @@ export function FolioSheet({
         {record.method !== "A/C CAMILO" && <button type="button" className="button secondary compact" disabled={busy}
           onClick={() => { closePayment(); setRefundText(""); setRefunding({ payment: record, group }); }}>Reembolsar</button>}
         {!canCorrect && <small>Este abono ya tiene reembolsos.</small>}
-        {canCorrect && user.role !== "receptionist" && <button type="button" className="text-button" disabled={busy}
+        {canCorrect && user.role === "superadmin" && <button type="button" className="text-button" disabled={busy}
           onClick={() => {
             if (voiding === record.id)
               void save(paymentPath(record, group) + "/void", () => ({}), closePayment);
@@ -237,7 +241,15 @@ export function FolioSheet({
               </div>
             </div>
             <div className="folio-toolbar-actions">
-              {!cancelled && reservation && !folio.joined_on && <button type="button" className="button secondary compact"
+              {!cancelled && stayBalance > 0 && <button type="button" className="button primary compact" disabled={busy}
+                onClick={() => {
+                  closePayment();
+                  setPayStay(true);
+                  setPayFullStay(true);
+                  setAmountText((stayBalance / 100).toFixed(2));
+                  setPaymentMethod("");
+                }}>Pagar estadía completa</button>}
+              {user.role === "superadmin" && !cancelled && reservation && !folio.joined_on && <button type="button" className="button secondary compact"
                 disabled={busy} aria-expanded={showRate} onClick={() => { const open = !showRate; closePayment(); setShowRate(open); }}>
                 Ajustar tarifa de hospedaje
               </button>}
@@ -308,7 +320,7 @@ export function FolioSheet({
             </form>
           </Modal>}
           {(payment || editing || payStay) && (
-            <Modal title={editing ? "Editar abono" : "Registrar abono"} className="folio-payment-dialog"
+            <Modal title={editing ? "Editar abono" : payFullStay ? "Pagar estadía completa" : "Registrar abono"} className="folio-payment-dialog"
               onClose={() => { if (!busy) closePayment(); }}>
             <form
               key={editing ? `edit-${editing.payment.id}` : payStay ? "stay" : payment?.lodging_day ?? payment?.service_id}
@@ -319,8 +331,9 @@ export function FolioSheet({
               <p className="folio-operation-summary">
                 <strong>{editing ? `Abono registrado · ${money(editing.payment.amount_cents)}` : `Saldo pendiente · ${money(payment?.balance_cents ?? stayBalance)}`}</strong>
                 <span>{editing ? `${editing.payment.method} · ${shortDate(editing.payment.day, true)}`
-                  : payment ? `${payment.service} · ${shortDate(payment.day, true)}` : "Hospedaje del grupo"}</span>
+                  : payment ? `${payment.service} · ${shortDate(payment.day, true)}` : `${nights} ${nights === 1 ? "noche" : "noches"} · ${folio.folio_mode === "individual" ? "Hospedaje de esta cuenta individual" : "Hospedaje de la cuenta conjunta"}`}</span>
               </p>
+              {payFullStay && <p>Incluye el saldo de todas las noches de esta hoja y descuenta los abonos anteriores. Los servicios y consumos se pagan por separado.</p>}
               {editing?.group && <p>La corrección se aplica a todas las hojas vinculadas al cobro.</p>}
               <div className="form-grid">
                 <label>
@@ -334,6 +347,7 @@ export function FolioSheet({
                     inputMode="decimal"
                     pattern={editing?.group || payStay ? "[0-9]{1,9}([.,][0-9]{1,2})?" : "[0-9]{1,7}([.,][0-9]{1,2})?"}
                     value={amountText}
+                    readOnly={payFullStay}
                     onChange={(event) => setAmountText(event.target.value)}
                     required
                     autoFocus
@@ -351,7 +365,7 @@ export function FolioSheet({
                   </select>
                 </label>
               </div>
-              {payStay && !editing && <div className="row-actions">
+              {payStay && !payFullStay && !editing && <div className="row-actions">
                 <button type="button" className="button secondary compact" disabled={busy}
                   onClick={() => setAmountText((stayBalance / 100).toFixed(2))}>Usar saldo completo</button>
               </div>}
@@ -369,7 +383,7 @@ export function FolioSheet({
                   Cancelar
                 </button>
                 <button className="button primary" disabled={busy || !base || !paymentMethod || (!editing && base > (payment?.balance_cents ?? stayBalance))}>
-                  {editing ? "Guardar corrección" : "Registrar abono"}
+                  {editing ? "Guardar corrección" : payFullStay ? "Confirmar pago de estadía" : "Registrar abono"}
                 </button>
               </div>
             </form>
@@ -449,7 +463,7 @@ export function FolioSheet({
                     {!row.author && !cashiers.length && "—"}
                   </td>
                   <td role="cell" className="folio-charge-actions">
-                    {!!row.pub_charge && <button type="button" className="button secondary compact"
+                    {user.role === "superadmin" && !!row.pub_charge && <button type="button" className="button secondary compact"
                       disabled={busy || row.paid_cents > 0} title={row.paid_cents > 0 ? "Reembolsa o anula primero los abonos del consumo." : undefined}
                       onClick={() => { closePayment(); setRemoving(row); }}>
                       Quitar consumo

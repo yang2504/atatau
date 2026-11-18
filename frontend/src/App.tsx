@@ -438,7 +438,7 @@ export default function App() {
           </div>
         </header>
         <div className="page-content" id="workspace-content" tabIndex={-1}>
-          <div className="page-heading">
+          <div className="page-heading" hidden={page === "calendar"}>
             <div className="page-heading-main">
               <span className="page-icon"><Icon name={pageIcon} size={25} /></span>
               <div>
@@ -490,8 +490,10 @@ export default function App() {
               </div>
               <Calendar
                 data={data}
+                canCorrect={user.role === "superadmin"}
                 expanded={calendarExpanded}
                 onToggleExpanded={() => setCalendarExpanded((current) => !current)}
+                onNew={() => setEditor({})}
                 onCreate={(draft) => setEditor({ draft })}
                 onEdit={(reservation) => setEditor({ reservation })}
                 onExtend={setExtending}
@@ -507,7 +509,10 @@ export default function App() {
           <div hidden={page !== "notes"} key={user.id}>
             <Notes data={data} user={user} onSaved={onSaved} active={page === "notes"} />
           </div>
-          {page === "cash" && <Cash user={user} />}
+          {page === "cash" && <Cash user={user} revision={data} onReservation={(id) => {
+            const reservation = data.reservations.find((item) => item.id === id);
+            if (reservation) openReservationFolios(reservation);
+          }} />}
           {page === "shifts" && user.role !== "receptionist" && <Shifts />}
           {page === "audit" && user.role !== "receptionist" && <Audit />}
           {page === "breakfast" && <Breakfast reservations={data.reservations} />}
@@ -695,6 +700,7 @@ export default function App() {
       {editor && (
         <ReservationForm
           data={data}
+          canCorrect={user.role === "superadmin"}
           reservation={editor.reservation}
           draft={editor.draft}
           onOpenFolio={editor.reservation && data.folios.some((folio) => folio.reservation_id === editor.reservation?.id)

@@ -14,8 +14,10 @@ import { occupiedUnits } from "../../lib/lodging";
 
 export function Calendar({
   data,
+  canCorrect,
   expanded,
   onToggleExpanded,
+  onNew,
   onCreate,
   onEdit,
   onExtend,
@@ -24,8 +26,10 @@ export function Calendar({
   onRooms,
 }: {
   data: Data;
+  canCorrect: boolean;
   expanded: boolean;
   onToggleExpanded: () => void;
+  onNew: () => void;
   onCreate: (draft: Draft) => void;
   onEdit: (r: Reservation) => void;
   onExtend: (r: Reservation) => void;
@@ -36,7 +40,7 @@ export function Calendar({
   const [start, setStart] = useState(() => addDays(today(), -2)),
     [filter, setFilter] = useState("all");
   const [roomQuery, setRoomQuery] = useState("");
-  const [range, setRange] = useState(7);
+  const [range, setRange] = useState(14);
   const [selection, setSelection] = useState<{
     unit: number;
     from: string;
@@ -110,8 +114,9 @@ export function Calendar({
         <input type="search" aria-label="Buscar habitación en el calendario"
           placeholder="Buscar habitación…" value={roomQuery} onChange={(e) => setRoomQuery(e.target.value)} />
         <select aria-label="Días visibles" value={range} onChange={(e) => setRange(Number(e.target.value))}>
-          <option value={7}>7 días · ampliado</option>
+          <option value={7}>7 días</option>
           <option value={14}>14 días</option>
+          <option value={21}>21 días</option>
         </select>
         <select
           aria-label="Filtrar habitaciones"
@@ -122,6 +127,9 @@ export function Calendar({
           <option value="private">Solo privadas</option>
           <option value="dorm">Solo dormitorios</option>
         </select>
+        <button className="button primary compact" onClick={onNew} disabled={!hasActiveRooms}>
+          <Icon name="plus" size={16} /> Nueva reserva
+        </button>
         </div>
       </div>
       <div className="calendar-guide">
@@ -294,6 +302,8 @@ export function Calendar({
                             other.ends_on >= span.ends_on) === index)
                           .map((span) => ({ r, span })))
                         .map(({ r, span }) => {
+                          const missedArrival = r.status === "pending" && r.check_in < currentDay && !r.checked_in_at;
+                          const stateLabel = missedArrival ? "Pendiente · Sin llegada registrada" : statusNames[r.status];
                           const left = Math.max(
                               0,
                               daysBetween(start, span.starts_on),
@@ -347,13 +357,13 @@ export function Calendar({
                           return (
                             <Fragment key={`${r.id}-${span.starts_on}`}>
                             <button
-                              draggable={!!unit.active && !place && !r.added_guests.length && !moved}
-                              className={`reservation-block ${r.status}${extendable || canOpenFolio ? " has-actions" : ""}${right - left === 1 ? " single-night" : ""}`}
+                              draggable={canCorrect && !!unit.active && !place && !r.added_guests.length && !moved}
+                              className={`reservation-block ${r.status}${missedArrival ? " missed-arrival" : ""}${extendable || canOpenFolio ? " has-actions" : ""}${right - left === 1 ? " single-night" : ""}`}
                               style={{
                                 gridColumn: `${left + 2} / ${right + 2}`,
                                 background:
                                   r.status === "pending"
-                                    ? "transparent"
+                                    ? missedArrival ? "#c9edc7" : "transparent"
                                     : colors.length === 1
                                     ? colors[0]
                                     : `linear-gradient(to right, ${stops})`,
@@ -367,8 +377,8 @@ export function Calendar({
                                 );
                                 e.dataTransfer.effectAllowed = "move";
                               }}
-                              aria-label={`${extra?.name ?? r.guest_name} · ${statusNames[r.status]} · ${roomPax} PAX${place ? ` · Grupo #${r.id}` : ""}${staffDetail ? ` · ${staffDetail}` : ""}`}
-                              title={`${r.guest_name} · ${statusNames[r.status]} · ${roomPax} PAX${place ? ` en ${room.name} · Grupo #${r.id} de ${r.pax} personas` : ""}\n${staffDetail}\n${visibleNights.map((day) => `${shortDate(day)}: ${paymentStatus(day)}`).join("\n")}`}
+                              aria-label={`${extra?.name ?? r.guest_name} · ${stateLabel} · ${roomPax} PAX${place ? ` · Grupo #${r.id}` : ""}${staffDetail ? ` · ${staffDetail}` : ""}`}
+                              title={`${r.guest_name} · ${stateLabel} · ${roomPax} PAX${place ? ` en ${room.name} · Grupo #${r.id} de ${r.pax} personas` : ""}\n${staffDetail}\n${visibleNights.map((day) => `${shortDate(day)}: ${paymentStatus(day)}`).join("\n")}`}
                             >
                               <span className="reservation-avatar">
                                 <Icon name={place || (room.type === "private" && roomPax > 1) ? "users" : "person"} size={15} />
@@ -377,7 +387,7 @@ export function Calendar({
                                 <strong>{extra?.name ?? r.guest_name}</strong>
                                 <small>
                                   {!!r.camilo && <span>A/C CAMILO · </span>}
-                                  {r.status === "pending" && <span className="reservation-pending-label">Pend. </span>}
+                                  {r.status === "pending" && <span className="reservation-pending-label">{missedArrival ? "Sin llegada · " : "Pend. "}</span>}
                                   {moved && <span>{span.ends_on === r.check_out ? "Traslado · " : "Anterior · "}</span>}
                                   {extra ? <span>Incorporación · </span> : place && <span>Grupo · </span>}
                                   {initials ? <span className="reservation-initials">{responsible.code}·{initials}</span>
@@ -411,6 +421,7 @@ export function Calendar({
           <span><Icon name="receipt" size={13} /> Hojas de consumo</span>
           <span>R Reserva · E Entrada · S Salida</span>
           <span><i className="legend-dot pending" /> Reserva pendiente</span>
+          <span><i className="legend-dot missed-arrival" /> Pendiente sin llegada desde ayer</span>
           <span><i className="legend-dot camilo" /> A/C CAMILO</span>
           <span><Icon name="receipt" size={13} /> Rojo: hoja con saldo</span>
           <span>

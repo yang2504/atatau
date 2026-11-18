@@ -14,6 +14,7 @@ import { DocumentScanner } from "./DocumentScanner";
 
 export function ReservationForm({
   data,
+  canCorrect,
   reservation,
   draft,
   onClose,
@@ -22,6 +23,7 @@ export function ReservationForm({
   onMove,
 }: {
   data: Data;
+  canCorrect: boolean;
   reservation?: Reservation;
   draft?: Draft;
   onClose: () => void;
@@ -110,7 +112,7 @@ export function ReservationForm({
       (room.type === "private" ? item.unit_ids.length === 1 : item.unit_ids.length === item.pax) &&
       item.unit_ids.every((id) => !conflicting.has(id) && room.units.some((unit) => unit.id === id && unit.active)));
   });
-  const groupAdvanceInvalid = group && !r && !registerNow && advanceAmount.trim() !== "" &&
+  const groupAdvanceInvalid = group && !r && !registerNow && !collect && advanceAmount.trim() !== "" &&
     (advanceBase === 0 || advanceBase > lodgingDue);
 
   function chooseGroup() {
@@ -148,7 +150,7 @@ export function ReservationForm({
     const form = new FormData(e.currentTarget);
     try {
       await api(
-        `/reservations${r ? `/${r.id}` : ""}`,
+        `/reservations${r ? `/${r.id}${!canCorrect ? "/operation" : ""}` : ""}`,
         {
           guest_name: form.get("guest_name"),
           guest_names: Array.from({ length: group ? groupGuestLabels.length : pax }, (_, i) =>
@@ -161,7 +163,7 @@ export function ReservationForm({
           nightly_cents:
             r?.nightly_cents === null && !rate ? undefined : cents(rate),
           arrival_time: form.get("arrival_time"),
-          status: operation === "advance" ? "pending" : operation ||
+          status: operation === "pay_stay" ? r?.status : operation === "advance" ? "pending" : operation ||
             (status === "confirmed" && r && ["in_house", "checked_out", "cancelled"].includes(r.status) ? r.status : status),
           breakfast,
           folio_mode: group ? "shared" : mode,
@@ -172,11 +174,14 @@ export function ReservationForm({
           check_in_payment: (registerNow || operation === "in_house") && collect
             ? { method: arrivalMethod, amount_cents: lodgingDue }
             : undefined,
-          advance_payment: operation === "advance" || (group && !r && !registerNow && advanceBase > 0)
+          stay_payment: collect && !(registerNow || operation === "in_house") && operation !== "advance" && operation !== "cancelled"
+            ? { method: arrivalMethod, amount_cents: lodgingDue }
+            : undefined,
+          advance_payment: operation === "advance" || (group && !r && !registerNow && !collect && advanceBase > 0)
             ? { method: advanceMethod, amount_cents: advanceBase, expected_balance_cents: lodgingDue }
             : undefined,
         },
-        r ? "PUT" : "POST",
+        r && canCorrect ? "PUT" : "POST",
       );
       setSaved(true);
       try {
@@ -202,6 +207,8 @@ export function ReservationForm({
         {saved ? <div className="modal-actions">
           <button className="button primary" disabled={busy}>Actualizar vista</button>
         </div> : <>
+        {r && !canCorrect && <p className="form-note">Las correcciones y anulaciones requieren al superadministrador. Puedes registrar confirmación, llegada, salida y cobros.</p>}
+        <fieldset className="reservation-fields form-stack" disabled={!!r && !canCorrect}>
         {!r && <div className="tabs reservation-kind" role="group" aria-label="Tipo de reserva">
           <button type="button" aria-pressed={!group} className={!group ? "active" : ""} onClick={() => setGroup(false)}>Un cuarto</button>
           <button type="button" aria-pressed={group} className={group ? "active" : ""} onClick={chooseGroup}>Reserva de grupo</button>
@@ -378,14 +385,14 @@ export function ReservationForm({
         </p>}
         {r && <>
           <ReservationStaff reservation={r} />
-          {onMove && <div className="row-actions"><button type="button" className="button secondary compact" disabled={busy}
+          {canCorrect && onMove && <div className="row-actions"><button type="button" className="button secondary compact" disabled={busy}
             onClick={() => onMove(r)}>{r.check_out === today() ? "Alargar en otra habitación" : "Cambiar de habitación"}</button></div>}
           {!!r.moves.length && <div className="group-booking-summary">
             <h3>Traslados registrados</h3>
             {[...new Set(r.moves.map((move) => move.day))].map((day) => <p key={day}>{shortDate(day)} · {data.rooms
               .find((room) => room.units.some((unit) => unit.id === r.moves.find((move) => move.day === day)?.unit_id))?.name}</p>)}
           </div>}
-          {!r.moves.length && (canArrive || r.status === "in_house") && r.check_out > today() &&
+          {canCorrect && !r.moves.length && (canArrive || r.status === "in_house") && r.check_out > today() &&
             <div className="row-actions">
               <button type="button" className="button secondary compact" disabled={busy}
                 onClick={() => setAddingGuest(true)}><Icon name="users" size={16} /> Ampliar huéspedes</button>
@@ -398,7 +405,7 @@ export function ReservationForm({
               return <li key={guest.id}>{guest.name} · desde {shortDate(guest.joined_on)} · {room?.name}{bed && ` · ${bed}`}</li>;
             })}</ul>
           </div>}
-          {onOpenFolio && <div className="row-actions">
+          {canCorrect && onOpenFolio && <div className="row-actions">
             <button type="button" className="button secondary compact" disabled={busy}
               onClick={() => onOpenFolio(r)}><Icon name="receipt" size={15} /> {group ? "Abrir hoja del grupo" : "Ver hojas de consumo"}</button>
           </div>}
@@ -477,15 +484,22 @@ export function ReservationForm({
             maxLength={2000}
           />
         </label>
-        {(canArrive || registerNow) && lodgingDue > 0 && (
+        </fieldset>
+        {r && !canCorrect && <div className="row-actions">
+          {onOpenFolio && <button type="button" className="button secondary" onClick={() => onOpenFolio(r)}>Ver hojas de consumo</button>}
+          {onMove && <button type="button" className="button secondary" onClick={() => onMove(r)}>Cambiar de habitación</button>}
+          {!r.moves.length && (canArrive || r.status === "in_house") && r.check_out > today() && <button type="button" className="button secondary" onClick={() => setAddingGuest(true)}>Ampliar huéspedes</button>}
+        </div>}
+        {r?.status !== "cancelled" && lodgingDue > 0 && (
           <fieldset className="form-stack">
-            <legend>{registerNow ? "Cobro al llegar (opcional)" : "Cobro al llegar"}</legend>
+            <legend>Pago de hospedaje (opcional)</legend>
             <label className="bed-option">
               <input type="checkbox" checked={collectOnArrival} onChange={(e) => setCollectOnArrival(e.target.checked)} />
-              Registrar el pago completo del hospedaje · {money(lodgingDue)}
+              Pagar estadía completa · {money(lodgingDue)}
             </label>
+            <p>{nights} {nights === 1 ? "noche" : "noches"} · Total {money(total)} · Abonado {money(r?.lodging_paid_cents ?? 0)} · Saldo {money(lodgingDue)}. Los consumos se pagan por separado.</p>
             {collect && <>
-              <label>Medio de pago al llegar
+              <label>Medio de pago de la estadía
                 <select value={arrivalMethod} onChange={(e) => setArrivalMethod(e.target.value)} required>
                   {!r && <option value="" disabled>Seleccionar medio de pago</option>}
                   {lodgingPaymentMethods.map((method) => <option key={method}>{method}</option>)}
@@ -498,7 +512,7 @@ export function ReservationForm({
             </>}
           </fieldset>
         )}
-        {group && !r && !registerNow && <fieldset className="form-stack group-advance">
+        {group && !r && !registerNow && !collect && <fieldset className="form-stack group-advance">
           <legend>Adelanto de reserva (opcional)</legend>
           <div className="form-grid">
             <label>Importe del adelanto (Bs)
@@ -520,21 +534,26 @@ export function ReservationForm({
           </div>
           {priced && nights > 0 && <dl>
             <div><dt>Hospedaje total</dt><dd>{money(total)}</dd></div>
-            {!!(r?.lodging_paid_cents || (!r && (registerNow ? collect : advanceBase))) && <div>
-              <dt>{r ? "Abonado" : registerNow ? "Pago al llegar" : `Adelanto · ${advanceMethod}`}</dt>
-              <dd>{money(r?.lodging_paid_cents ?? (registerNow ? lodgingDue : advanceBase))}</dd>
+            {!!(r?.lodging_paid_cents || (!r && (collect ? lodgingDue : advanceBase))) && <div>
+              <dt>{r ? "Abonado" : collect ? "Pago de estadía" : `Adelanto · ${advanceMethod}`}</dt>
+              <dd>{money(r?.lodging_paid_cents ?? (collect ? lodgingDue : advanceBase))}</dd>
             </div>}
-            <div><dt>Saldo de hospedaje</dt><dd>{money(Math.max(0, lodgingDue - (r ? 0 : registerNow ? (collect ? lodgingDue : 0) : advanceBase)))}</dd></div>
+            <div><dt>Saldo de hospedaje</dt><dd>{money(Math.max(0, lodgingDue - (r ? 0 : collect ? lodgingDue : advanceBase)))}</dd></div>
           </dl>}
         </section>}
         <div className="modal-actions">
           <button type="button" className="button secondary" onClick={onClose}>
             Cerrar
           </button>
-          <button disabled={busy || (group ? !groupReady || !priced || groupAdvanceInvalid : !room) || !end || r?.status === "cancelled"} className="button primary">
+          {(!r || canCorrect) && <button disabled={busy || (group ? !groupReady || !priced || groupAdvanceInvalid : !room) || !end || r?.status === "cancelled"} className="button primary">
             {busy ? "Guardando…" : r ? "Guardar cambios" : registerNow ? (collect ? arrivalMethod === "A/C CAMILO" ? "Registrar entrada · A/C CAMILO" : "Registrar entrada y cobro" : "Registrar entrada")
-              : group ? "Crear reserva de grupo" : "Crear reserva"}
-          </button>
+              : collect ? "Crear reserva y pagar estadía" : group ? "Crear reserva de grupo" : "Crear reserva"}
+          </button>}
+          {r?.status === "pending" && !canCorrect && <button className="button secondary" value="confirmed" disabled={busy}>Confirmar reserva</button>}
+          {r && r.status !== "cancelled" && collect && <button className="button primary" value="pay_stay" disabled={busy}>Pagar estadía completa</button>}
+          {r?.status === "in_house" && <button className="button secondary" value="checked_out" disabled={busy}>
+            {collect ? "Registrar salida y pagar estadía" : "Registrar salida"}
+          </button>}
           {canArrive && <button className="button secondary" value="in_house" disabled={busy || (group && !groupReady)}>
             {r?.status === "pending" ? "Confirmar y registrar llegada" : "Registrar llegada"}
             {collect && (arrivalMethod === "A/C CAMILO" ? " · A/C CAMILO" : " con pago")}
@@ -559,15 +578,14 @@ export function ReservationForm({
             </button>
           </details>
         )}
-        {r && (
+        {r && canCorrect && (
           <details>
             <summary>Acciones de la estadía</summary>
             {["in_house", "checked_out", "cancelled"].includes(r.status) && <p>{statusNames[r.status]}</p>}
             <div className="modal-actions">
-              {r.status === "in_house" && <button className="button secondary" value="checked_out" disabled={busy}>Registrar salida</button>}
-              {r.status === "cancelled"
+              {canCorrect && (r.status === "cancelled"
                 ? <button className="button secondary" value="confirmed" disabled={busy}>Reactivar reserva</button>
-                : <button className="button secondary" value="cancelled" disabled={busy}>Cancelar reserva</button>}
+                : <button className="button secondary" value="cancelled" disabled={busy}>Cancelar reserva</button>)}
             </div>
           </details>
         )}

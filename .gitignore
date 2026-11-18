@@ -5,3 +5,4 @@ backend/data/
 *.log
 .env
 Hostel-Atatau-Windows-x64*.zip
+Hostel-Atatau-Windows-x64*.zip.sha256

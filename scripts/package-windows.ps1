@@ -19,7 +19,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Falló la compilación.' }
 
     New-Item -ItemType Directory -Path $stage, "$stage/backend", "$stage/frontend", "$stage/runtime" | Out-Null
-    Copy-Item -LiteralPath package.json, package-lock.json, README.md -Destination $stage
+    Copy-Item -LiteralPath package.json, package-lock.json, README.md, VERSION.txt -Destination $stage
     Copy-Item -LiteralPath docs -Destination $stage -Recurse
     Copy-Item -LiteralPath backend/package.json, backend/src -Destination "$stage/backend" -Recurse
     Copy-Item -LiteralPath frontend/package.json, frontend/dist -Destination "$stage/frontend" -Recurse

@@ -2828,39 +2828,46 @@ details[open] summary {
   padding: 0.7rem 22px 0;
 }
 
-/* Calendario de recepción: fechas y ocupación legibles a distancia. */
-.calendar-grid { --day-width: 112px; min-width: 1788px; }
-.calendar-grid.days-7 { --day-width: 132px; min-width: 1144px; }
-.calendar-dates, .calendar-row, .room-header { --calendar-room-width: 220px; }
-.calendar-page .calendar-dates { height: 88px; }
-.date-heading { gap: 2px; font-size: 16px; font-weight: 650; color: #334b3d; background: #edf2ed; border-color: #b9c8bd; }
-.date-heading strong, .date-heading.is-today strong { font-size: 32px; font-weight: 750; line-height: 1.15; }
+/* Calendario compacto: más fechas y camas sin perder jerarquía. */
+.calendar-page .page-heading[hidden] { display: none; }
+.calendar-grid { --day-width: 76px; min-width: 1244px; }
+.calendar-grid.days-7 { --day-width: 96px; min-width: 852px; }
+.calendar-grid.days-21 { --visible-days: 21; min-width: 1776px; }
+.calendar-dates, .calendar-row, .room-header { --calendar-room-width: 180px; }
+.calendar-page .calendar-dates { height: 62px; }
+.date-heading { gap: 2px; font-size: 14px; font-weight: 650; color: #334b3d; background: #edf2ed; border-color: #b9c8bd; }
+.date-heading strong, .date-heading.is-today strong { font-size: 26px; font-weight: 750; line-height: 1.15; }
 .date-heading strong { color: #203b2c; }
 .date-heading.is-today { background: #206047; color: white; }
 .resource-label { font-size: 12px; letter-spacing: .3px; color: #334b3d; }
-.room-header { height: 58px; }
-.room-header .room-heading-text strong { font-size: 16px; }
-.room-heading-text small { font-size: 13px; }
-.room-availability { font-size: 14px; color: #334b3d; }
-.calendar-row { height: 84px; }
-.resource-name { font-size: 15px; color: #334b3d; }
-.reservation-block { height: 68px; padding-inline: 8px; }
-.reservation-block strong { font-size: 16px; }
-.reservation-block small { font-size: 13px; }
+.room-header { height: 44px; }
+.room-header .room-heading-text strong { font-size: 15px; }
+.room-heading-text small { font-size: 12px; }
+.room-availability { font-size: 12px; color: #334b3d; }
+.calendar-row { height: 64px; }
+.resource-name { font-size: 14px; font-weight: 700; color: #244b3d; background: #eaf2ed; }
+.room-dorm .resource-name { color: #2d4863; background: #eaf0f7; }
+.reservation-block { height: 54px; padding-inline: 6px; }
+.reservation-block strong { font-size: 14px; }
+.reservation-block small { font-size: 12px; }
 .reservation-actions { gap: 4px; }
-.reservation-actions button { width: 30px; height: 29px; }
+.reservation-actions button { width: 26px; height: 24px; }
 .reservation-block.has-actions { padding-inline-end: 40px; }
 .reservation-block.in_house, .reservation-block.checked_out { color: #294538; }
-.calendar-page .calendar-scroll { min-height: 300px; }
+.calendar-page .calendar-scroll { min-height: 180px; }
+.legend-dot.missed-arrival { background: #c9edc7; border: 1px dashed #496b58; }
 .legend-dot.camilo { background: #ed6bc8; }
 .reservation-actions button.folio-has-debt { background: #b42332; border-color: #b42332; color: #fff; }
 .reservation-actions button.folio-has-debt:hover { background: #8e1c28; }
 .cash-workspace, .cash-workspace > div { min-width: 0; }
 .cash-workspace > .tabs { flex-wrap: wrap; }
 .cash-workspace > .tabs button { color: #405348; }
+.reservation-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.reservation-fields:disabled :is(input, select, textarea) { color: #334b3d; opacity: 1; background: #f1f5ef; }
 @media (max-width: 650px) {
   .calendar-dates, .calendar-row, .room-header { --calendar-room-width: 140px; }
-  .calendar-grid { min-width: 1708px; }
-  .calendar-grid.days-7 { min-width: 1064px; }
+  .calendar-grid { min-width: 1204px; }
+  .calendar-grid.days-7 { min-width: 812px; }
+  .calendar-grid.days-21 { min-width: 1736px; }
   .resource-name { padding-inline: 10px; }
 }

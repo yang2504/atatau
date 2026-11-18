@@ -48,6 +48,7 @@ test("Camilo cubre hospedaje, separa el estimado de caja y conserva deudas adici
     assert.equal((await request("/cash/camilo?month=2026-13")).status, 400);
     assert.equal((await request(monthPath)).body.estimated_cents, 30002);
     assert.equal((await request(monthPath)).body.reservations.length, 1);
+    assert.equal((await request(monthPath)).body.reservations[0].accommodation, "Privada");
     assert.ok(!(await request(`/cash/monthly?month=${day.slice(0, 7)}`)).body.some((row) => row.method === "A/C CAMILO"));
     assert.equal((await request("/cash/turns/current")).body.entries.length, 0);
     const extra = await request(path + "/services", { day, service: "Consumo", detail: "Adicional del huésped", total_cents: 700 });
@@ -58,10 +59,13 @@ test("Camilo cubre hospedaje, separa el estimado de caja y conserva deudas adici
     assert.equal(reservation.camilo, 1);
     const extraPayment = await request(path + "/payments", { ...payment, method: "Efectivo" });
     assert.equal(extraPayment.status, 201);
+    const ledger = (await request("/cash/daily")).body;
+    assert.equal(ledger.find((row) => row.source === "folio" && row.id === extraPayment.body.id).accommodation, "Privada");
     assert.equal((await request("/reservations")).body.find((r) => r.id === reservationId).folio_balance_cents, 0);
     assert.equal((await request(`${path}/payments/${extraPayment.body.id}`, { day, amount_cents: 700, method: "A/C CAMILO" }, "PATCH")).status, 400);
     assert.equal((await request(monthPath)).body.estimated_cents, 30002);
     assert.equal((await request(`${path}/payments/${extraPayment.body.id}/refunds`, { amount_cents: 100, reason: "Ajuste" })).status, 201);
+    assert.equal((await request("/cash/daily")).body.find((row) => row.source === "refund").accommodation, "Privada");
     assert.equal((await request("/reservations")).body.find((r) => r.id === reservationId).folio_balance_cents, 100);
     assert.equal((await request(`${path}/stay-payments/${receipt.id}/void`, {})).status, 200);
     assert.equal((await request(monthPath)).body.estimated_cents, 0);

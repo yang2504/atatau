@@ -5,6 +5,12 @@ import { audit, choice, date, fail, integer, text } from "../core/validation.js"
 import { canSeeSuperadmin } from "./users.js";
 import { currentTurn, turnFor } from "./shifts.js";
 
+// Incluye los cuartos anteriores cuando hubo traslados, sin repetir camas.
+const places = `SELECT group_concat(place, ' · ') FROM (
+  SELECT DISTINCT rm.name || CASE WHEN rm.type='dorm' THEN ' / ' || un.label ELSE '' END AS place
+  FROM reservation_occupancy oc JOIN units un ON un.id=oc.unit_id JOIN rooms rm ON rm.id=un.room_id
+  WHERE oc.reservation_id=reservation.id ORDER BY rm.id,un.id
+)`;
 const ledger = (where) => `WITH ledger AS (
   SELECT 'manual' AS source,id,day,kind,detail,base_cents,surcharge_cents,method,user_id,voided,cash_box,turn_id
   FROM cash_entries
@@ -31,6 +37,8 @@ const ledger = (where) => `WITH ledger AS (
 )
 SELECT ledger.source,ledger.id,ledger.day,ledger.kind,ledger.detail,ledger.base_cents,
   ledger.surcharge_cents,ledger.method,ledger.voided,ledger.cash_box,
+  reservation.id AS reservation_id,
+  (${places}) AS accommodation,
   ledger.base_cents AS cash_cents,
   CASE WHEN ledger.method='Efectivo' THEN ledger.base_cents ELSE 0 END AS physical_cents,
   (SELECT a.created_at FROM audit_log a WHERE a.entity_id=ledger.id AND a.entity=
@@ -39,6 +47,11 @@ SELECT ledger.source,ledger.id,ledger.day,ledger.kind,ledger.detail,ledger.base_
   CASE WHEN u.role='superadmin' AND NOT ? THEN 'Atatau' ELSE COALESCE(t.user_name,u.name) END AS author
 FROM ledger JOIN users u ON u.id=ledger.user_id
 LEFT JOIN cash_turns t ON t.id=ledger.turn_id
+LEFT JOIN reservations reservation ON reservation.id=(
+  SELECT f.reservation_id FROM folios f JOIN folio_payments p ON p.folio_id=f.id
+  WHERE p.id=CASE WHEN ledger.source IN ('folio','stay') THEN ledger.id
+    WHEN ledger.source='refund' THEN (SELECT payment_id FROM folio_refunds WHERE id=ledger.id) END
+)
 WHERE ledger.cash_box=? AND ledger.method<>'A/C CAMILO' AND ${where}
 ORDER BY ledger.day DESC,recorded_at DESC,ledger.source,ledger.id DESC`;
 
@@ -51,6 +64,7 @@ export function cashModule(db, admin) {
     if (typeof month !== "string" || !/^\d{4}-\d{2}$/.test(month)) fail("Elige un mes válido.");
     date(month + "-01");
     const reservations = db.prepare(`SELECT r.id AS reservation_id,r.guest_name,r.check_in,r.check_out,
+      (${places.replaceAll('reservation.id', 'r.id')}) AS accommodation,
       SUM(p.retained_cents) AS amount_cents FROM folio_payment_balances p
       JOIN folios f ON f.id=p.folio_id JOIN reservations r ON r.id=f.reservation_id
       WHERE p.method='A/C CAMILO' AND p.voided=0 AND p.day>=? AND p.day<? AND p.retained_cents>0
@@ -135,7 +149,24 @@ export function cashModule(db, admin) {
     });
     res.status(201).json({ id, cash_cents: base, surcharge_cents: surcharge, collected_cents: base + surcharge });
   });
+  router.patch("/:id", (req, res) => {
+    if (req.user.role !== "superadmin") fail("Solo el superadministrador puede corregir movimientos.", 403);
+    const id = integer(Number(req.params.id), "Movimiento");
+    const day = date(req.body.day);
+    const detail = text(req.body.detail, "Concepto", 160);
+    const base = integer(req.body.base_cents, "Importe", 1, 100_000_000);
+    const method = choice(req.body.method, paymentMethods, "Medio de pago");
+    transaction(db, () => {
+      const before = findEntry.get(id);
+      if (!before || before.voided) fail("Movimiento activo inexistente.", 404);
+      db.prepare("UPDATE cash_entries SET day=?,detail=?,base_cents=?,method=?,surcharge_cents=? WHERE id=?")
+        .run(day, detail, base, method, before.kind === "income" ? cardSurcharge(base, method) : 0, id);
+      audit(db, req.user, "update", "cash_entry", id, before, findEntry.get(id));
+    });
+    res.json({ ok: true });
+  });
   router.post("/:id/void", admin, (req, res) => {
+    if (req.user.role !== "superadmin") fail("Solo el superadministrador puede anular movimientos.", 403);
     const id = integer(Number(req.params.id), "Movimiento");
     transaction(db, () => {
       const before = findEntry.get(id);

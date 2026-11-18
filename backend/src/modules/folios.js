@@ -154,10 +154,11 @@ export function setNightlyRates(db, reservation, start, end, rate) {
   }
 }
 
-export function recordStayPayment(db, reservationId, body, user, expectedBalance = null) {
+export function recordStayPayment(db, reservationId, body, user, expectedBalance = null, folioIds = null) {
   const details = paymentDetails(body);
   const amount = integer(body.amount_cents, "Importe", 1, MAX_STAY_CENTS);
-  const folios = db.prepare(`${folioQuery} WHERE f.reservation_id=? ORDER BY f.id`).all(reservationId);
+  const folios = db.prepare(`${folioQuery} WHERE f.reservation_id=? ORDER BY f.id`).all(reservationId)
+    .filter((folio) => folioIds === null || folioIds.includes(folio.id));
   const nights = folios.flatMap((folio) => entries(db, folio)
     .filter((row) => row.lodging_day && row.balance_cents > 0)
     .map((row) => ({ folioId: folio.id, row })));
@@ -166,6 +167,8 @@ export function recordStayPayment(db, reservationId, body, user, expectedBalance
   if (expectedBalance !== null && expectedBalance !== balance)
     fail("El saldo del hospedaje cambió. Revisa la reserva antes de registrar el cobro.", 409);
   if (amount > balance) fail("El abono supera el saldo del hospedaje.", 409);
+  if (body.full_stay === true && amount !== balance)
+    fail("El pago completo debe cubrir todo el saldo de hospedaje.", 409);
 
   const turnId = turnFor(db, user);
   let groupId = null;
@@ -207,6 +210,11 @@ function activePayment(db, folioId, id, group) {
 
 export function folioModule(db) {
   const router = Router();
+  router.use((req, res, next) => {
+    if (req.user.role !== "superadmin" && (req.method === "PATCH" || /\/void\/?$/.test(req.path)))
+      fail("Solo el superadministrador puede corregir o anular cargos y abonos.", 403);
+    next();
+  });
   router.post("/:id/services/:serviceId/void", (req, res) => {
     transaction(db, () => {
       const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
@@ -306,11 +314,13 @@ export function folioModule(db) {
   router.post("/:id/stay-payments", (req, res) => {
     const id = transaction(db, () => {
       const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
-      if (folio.status === "cancelled" || !db.prepare(
+      const scope = choice(req.body.scope ?? "reservation", ["folio", "reservation"], "Alcance del cobro");
+      if (folio.status === "cancelled" || (scope === "reservation" && !db.prepare(
         "SELECT 1 FROM allocations WHERE reservation_id=? AND pax IS NOT NULL LIMIT 1",
-      ).get(folio.reservation_id)) fail("El cobro conjunto requiere una reserva de grupo vigente.", 409);
+      ).get(folio.reservation_id))) fail("Elige una hoja vigente para cobrar el hospedaje.", 409);
       const expected = integer(req.body.expected_balance_cents, "Saldo esperado", 1, MAX_STAY_CENTS);
-      return recordStayPayment(db, folio.reservation_id, req.body, req.user, expected);
+      return recordStayPayment(db, folio.reservation_id, req.body, req.user, expected,
+        scope === "folio" ? [folio.id] : null);
     });
     res.status(201).json({ id });
   });
@@ -374,8 +384,8 @@ export function folioModule(db) {
     res.status(201).json({ id, cash_cents: received, surcharge_cents: surcharge, collected_cents: received + surcharge });
   });
   function voidPayment(req, res, group) {
-    if (req.user.role === "receptionist")
-      fail("Solo administración puede anular un abono.", 403);
+    if (req.user.role !== "superadmin")
+      fail("Solo el superadministrador puede anular un abono.", 403);
     const folioId = integer(Number(req.params.id), "Hoja");
     const paymentId = integer(Number(req.params.paymentId), "Abono");
     transaction(db, () => {
@@ -414,7 +424,8 @@ export function folioModule(db) {
         ? "UPDATE folio_payments SET voided=1 WHERE group_id=?"
         : "UPDATE folio_payments SET voided=1 WHERE id=?").run(paymentId);
       if (group) {
-        const replacement = recordStayPayment(db, folio.reservation_id, req.body, req.user);
+        const replacement = recordStayPayment(db, folio.reservation_id, req.body, req.user, null,
+          before.applications.map((item) => item.folio_id));
         audit(db, req.user, "replace", "folio_payment", paymentId, before, paymentSnapshot(db, replacement, true));
         return replacement;
       }
