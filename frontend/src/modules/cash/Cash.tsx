@@ -289,7 +289,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
         {visibleEntries?.length === 0 && <p className="quiet-state">{accountEntries?.length ? "No hay movimientos de este tipo." : "Aún no hay movimientos en esta cuenta."}</p>}
         {!!visibleEntries?.length && <div className="table-scroll">
           <table>
-            <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe base</th>{user.role === "superadmin" && <th>Acción</th>}</tr></thead>
+            <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe base</th><th>Acción</th></tr></thead>
             <tbody>{visibleEntries.map((row) => <tr key={`${row.source}-${row.id}`} className={row.voided ? "void-row" : row.kind === "expense" ? "ledger-expense-row" : undefined}>
               <td>{shortDate(row.day, byTurn)}{row.recorded_at && <small className="cell-sub">Registro {localDateTime(row.recorded_at)}</small>}</td>
               <td><span className={`tag ledger-kind ${row.kind}`}>{row.kind === "expense" ? "Egreso" : "Ingreso"}</span>
@@ -303,10 +303,10 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
                   {row.method === "Tarjeta" ? "Comisión descontada" : "Recargo histórico"} {money(row.surcharge_cents)}
                 </small>}
               </td>
-              {user.role === "superadmin" && <td>{row.source === "manual" && !row.voided && <div className="row-actions">
+              <td>{row.source === "manual" && !row.voided && <div className="row-actions">
                 <button className="text-button" disabled={busy} onClick={() => { openMovement(row.kind); setEditing(row); setAmount((row.base_cents / 100).toFixed(2)); setTransferMethod(row.method); }}>Editar</button>
                 <button className="text-button" disabled={busy} onClick={() => { setError(""); setVoiding(row); }}>Anular</button>
-              </div>}</td>}
+              </div>}</td>
             </tr>)}</tbody>
           </table>
         </div>}
@@ -315,7 +315,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
         className="cash-dialog" onClose={() => { if (!busy) { setError(""); setMovementKind(null); } }}>
         <ErrorBox message={error} />
         <form className="form-stack" onSubmit={record}>
-          {admin && <label>Fecha<input type="date" name="day" defaultValue={editing?.day ?? today()} required /></label>}
+          {(admin || editing) && <label>Fecha<input type="date" name="day" defaultValue={editing?.day ?? today()} required /></label>}
           <label>Concepto<input name="detail" defaultValue={editing?.detail} placeholder="Ej. Compra de insumos" maxLength={160} required /></label>
           <label>Importe base (Bs)<input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" pattern="[0-9]{1,7}([.,][0-9]{1,2})?" required /></label>
           <label>Medio de pago<select value={method} onChange={(e) => setTransferMethod(e.target.value)}>

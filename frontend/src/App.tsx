@@ -490,7 +490,6 @@ export default function App() {
               </div>
               <Calendar
                 data={data}
-                canCorrect={user.role === "superadmin"}
                 expanded={calendarExpanded}
                 onToggleExpanded={() => setCalendarExpanded((current) => !current)}
                 onNew={() => setEditor({})}
@@ -692,7 +691,6 @@ export default function App() {
         <FolioSheet
           folio={selectedFolio}
           data={data}
-          user={user}
           onClose={() => setSelectedFolio(null)}
           onSaved={onSaved}
         />
@@ -700,7 +698,6 @@ export default function App() {
       {editor && (
         <ReservationForm
           data={data}
-          canCorrect={user.role === "superadmin"}
           reservation={editor.reservation}
           draft={editor.draft}
           onOpenFolio={editor.reservation && data.folios.some((folio) => folio.reservation_id === editor.reservation?.id)

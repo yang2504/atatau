@@ -1,5 +1,12 @@
 # Cambios y decisiones importantes
 
+## 2026-11-18 — v1.15.1: restaurar modificaciones de recepción
+
+- Se corrigió la interpretación de permisos de v1.15.0: recepción y administración pueden crear, actualizar fechas/hora, modificar, cancelar y reactivar reservas, tanto en formulario como desde el calendario. Cancelar oculta la reserva del calendario y libera la disponibilidad sin borrar su historial. Recepción no dispone de borrado definitivo.
+- Se quitaron también los bloqueos de corrección/anulación de caja y abonos, ajuste de tarifas y corrección de consumos. Las anulaciones conservan registros y auditoría. Se mantienen los controles de disponibilidad, coherencia de pagos y permisos de gestión de usuarios/configuración.
+- Pasaron npm test (12 pruebas), npm run check y npm run build. Una nueva prueba recorre edición de fechas y hora, cancelación, reactivación, cruces, conservación de huéspedes/hojas y corrección de caja/abonos con cuentas de recepción y administración. Se usa SQLite en memoria; producción no se toca. La comprobación visual y el ZIP se verifican con una base temporal.
+- Versión identificada por VERSION.txt, etiqueta v1.15.1 y ZIP de Windows. No requiere migraciones ni dependencias nuevas. Pendiente: actualizar la instalación personal desde el paquete corregido.
+
 ## 2026-11-18 — Versión v1.15.0 para Windows
 
 - Integra el calendario compacto, la ubicación de hospedaje en Caja, las correcciones/anulaciones exclusivas del superadministrador y Pagar estadía completa desde reserva y hoja.

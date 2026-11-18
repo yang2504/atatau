@@ -2863,7 +2863,6 @@ details[open] summary {
 .cash-workspace > .tabs { flex-wrap: wrap; }
 .cash-workspace > .tabs button { color: #405348; }
 .reservation-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
-.reservation-fields:disabled :is(input, select, textarea) { color: #334b3d; opacity: 1; background: #f1f5ef; }
 @media (max-width: 650px) {
   .calendar-dates, .calendar-row, .room-header { --calendar-room-width: 140px; }
   .calendar-grid { min-width: 1204px; }

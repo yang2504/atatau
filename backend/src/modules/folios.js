@@ -210,11 +210,6 @@ function activePayment(db, folioId, id, group) {
 
 export function folioModule(db) {
   const router = Router();
-  router.use((req, res, next) => {
-    if (req.user.role !== "superadmin" && (req.method === "PATCH" || /\/void\/?$/.test(req.path)))
-      fail("Solo el superadministrador puede corregir o anular cargos y abonos.", 403);
-    next();
-  });
   router.post("/:id/services/:serviceId/void", (req, res) => {
     transaction(db, () => {
       const folio = findFolio(db, integer(Number(req.params.id), "Hoja"));
@@ -384,8 +379,6 @@ export function folioModule(db) {
     res.status(201).json({ id, cash_cents: received, surcharge_cents: surcharge, collected_cents: received + surcharge });
   });
   function voidPayment(req, res, group) {
-    if (req.user.role !== "superadmin")
-      fail("Solo el superadministrador puede anular un abono.", 403);
     const folioId = integer(Number(req.params.id), "Hoja");
     const paymentId = integer(Number(req.params.paymentId), "Abono");
     transaction(db, () => {

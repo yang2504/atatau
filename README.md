@@ -1,6 +1,6 @@
 # Hostel Atatau
 
-Versión **v1.15.0** · 18 de noviembre de 2026. El ZIP de Windows incluye `VERSION.txt` para identificar la versión instalada.
+Versión **v1.15.1** · 18 de noviembre de 2026. El ZIP de Windows incluye `VERSION.txt` para identificar la versión instalada.
 
 Sistema web local para recepción. **Primera base funcional**, con React + TypeScript + Vite en `frontend/` y Node.js + Express + SQLite en `backend/`. Los datos se guardan en un archivo local; no se usa ningún servicio externo para operar.
 
@@ -47,7 +47,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 
 ## Qué funciona
 
-- Calendario de 7, 14 o 21 días (14 al abrir) con encabezado fijo, iconos de personas y filas por cama. Permite seleccionar rangos, navegar por fechas y crear reservas. El superadministrador puede editar reservas. Arrastrar una reserva de una cama o privada conserva el número de noches. Las reservas de varias camas se reubican desde su formulario.
+- Calendario de 7, 14 o 21 días (14 al abrir) con encabezado fijo, iconos de personas y filas por cama. Permite seleccionar rangos, navegar por fechas y crear reservas. Todos los roles pueden editar y cancelar reservas. Arrastrar una reserva de una cama o privada conserva el número de noches. Las reservas de varias camas se reubican desde su formulario.
 - La cuadrícula ocupa el espacio disponible y se desplaza por separado, con las fechas y los nombres de habitación visibles al recorrer filas y columnas. Al abrir un modal, el fondo conserva su posición. En ventanas muy pequeñas también puedes desplazar la página para llegar a los controles.
 - Pulsa **Ampliar** en el calendario para ocultar las tarjetas del resumen y ver más habitaciones a la vez. **Ver resumen** recupera las tarjetas. Los filtros, las fechas y **Nueva reserva** siguen disponibles en ambas vistas.
 - El calendario abre dos días antes de hoy y resalta la columna de hoy. El botón **Hoy** vuelve a esa vista. Busca una habitación por nombre o número y distingue privadas y dormitorios por sus encabezados.
@@ -65,7 +65,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - Selector visual de entrada y salida en el formulario, con resumen de noches y total del hospedaje antes de guardar.
 - Talonario editable en **Configuración → Tarifas sugeridas → Talonario**, por habitación, PAX y desayuno. Para reservas nuevas se sugiere la tarifa específica del canal, luego la del talonario y finalmente la base de la habitación, según disponibilidad. Recepción puede escribir el importe acordado por noche para todo el grupo. El talonario empieza vacío para cargar importes verificados.
 - Hojas de consumo conjuntas o individuales con hospedaje por noche, cargos de servicios, abonos parciales, saldo y registro del medio de pago y del usuario. Los importes individuales reparten la tarifa del grupo de forma que la suma sea exacta.
-- Las reservas pendientes se muestran con borde discontinuo y fondo transparente. Si su fecha de llegada ya pasó y no tienen entrada registrada, aparecen en verde claro con la etiqueta Sin llegada; conservan su estado y disponibilidad hasta que el superadministrador las cancele. En las confirmadas, el naranja indica noches pagadas, el amarillo indica saldo y el gris indica noches sin tarifa o sin cargo.
+- Las reservas pendientes se muestran con borde discontinuo y fondo transparente. Si su fecha de llegada ya pasó y no tienen entrada registrada, aparecen en verde claro con la etiqueta Sin llegada; conservan su estado y disponibilidad hasta que se cancelen. En las confirmadas, el naranja indica noches pagadas, el amarillo indica saldo y el gris indica noches sin tarifa o sin cargo.
 - Al registrar una entrada, activa el pago completo del hospedaje y elige **A/C CAMILO** si el huésped ya pagó al intermediario. Usa la tarifa acordada en Bs. La reserva se muestra en fucsia y la hoja indica hospedaje cubierto por Camilo, sin deuda por ese importe. Los servicios y consumos adicionales se pagan por separado.
 - El botón de la hoja en el calendario se vuelve rojo cuando cualquier huésped de esa reserva tiene cargos pendientes. Incluye hospedaje y consumos; una reserva de Camilo solo lo activa por cargos adicionales sin cubrir. El aviso se actualiza al registrar, editar, anular o reembolsar abonos.
 - **Caja → Caja Chica → A/C CAMILO** muestra a todos los roles el estimado mensual y las reservas que lo componen, por mes de registro del importe. Suma importes vigentes en Bs, sin convertir dólares ni mezclarlos con ingresos recibidos. Es un estimado bruto: no descuenta liquidaciones ya recibidas de Camilo. Una corrección o anulación del registro actualiza el estimado. No se permite registrar un reembolso desde Caja por un importe que sigue a cargo del intermediario.
@@ -84,7 +84,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - **Convertir tarifa de USD a Bs** consulta el tipo de cambio oficial del BCB al activar la casilla. Puedes aplicar el equivalente a una reserva, una extensión o el talonario. Si el BCB no responde, se usa el último dato oficial guardado mientras esté vigente. Cuando falta una cotización vigente, se usa el respaldo de **Configuración → Tipo de cambio para hospedaje**, si administración lo guardó. El importe aplicado se redondea al centavo y se guarda en bolivianos.
 - **Inventario Pub** muestra tarjetas con foto, precio por unidad y stock. Con **Vender** o **Cargar a huésped**, elige las unidades y revisa el subtotal y el stock restante. La venta a cuenta descuenta el stock y agrega el cargo a la hoja seleccionada de un huésped alojado. Caja Pub registra el ingreso al cobrar el cargo. El historial conserva las unidades y el precio de cada venta.
 - Administración gestiona productos y categorías con el lápiz y el basurero. **Baja de stock** ajusta las existencias del producto. **Eliminar producto** lo retira del catálogo y conserva sus ventas, movimientos y cargos anteriores. La alerta de reposición usa un mínimo configurable, con 3 unidades por defecto. Cada foto se guarda en SQLite con hasta 800 px y 200 KiB después de comprimirla.
-- El superadministrador puede usar **Quitar consumo** desde la hoja: corrige un producto del Pub cargado a un huésped o grupo equivocado. Requiere motivo, retira el cargo y devuelve las unidades al stock en la misma transacción, conservando el historial. Si hay abonos retenidos, primero hay que reembolsarlos por completo o solicitar su anulación. Después puede cargarse el producto a la hoja correcta desde Inventario Pub.
+- Todos los roles pueden usar **Quitar consumo** desde la hoja: corrige un producto del Pub cargado a un huésped o grupo equivocado. Requiere motivo, retira el cargo y devuelve las unidades al stock en la misma transacción, conservando el historial. Si hay abonos retenidos, primero hay que reembolsarlos por completo o solicitar su anulación. Después puede cargarse el producto a la hoja correcta desde Inventario Pub.
 - **Auditoría** permite a administración consultar el usuario, la hora local y los valores anterior y nuevo de reservas, llegadas, cambios de habitación y fechas, cancelaciones, consumos, abonos y movimientos de caja. Los registros históricos conservan la información que se guardaba en su momento.
 
 ## Reglas de operación
@@ -97,11 +97,11 @@ Para reservar varios cuartos, abre **Nueva reserva → Reserva de grupo**. Escri
 
 Ingresa la **tarifa total del grupo por noche**. Si todas las habitaciones tienen una tarifa sugerida, el formulario suma sus importes. Puedes registrar un adelanto al crear la reserva y revisar el total, el adelanto y el saldo antes de guardar. En el calendario todos los cuartos muestran el mismo número de grupo al abrir el detalle. Desde cualquiera de ellos puedes acceder a la misma hoja. Usa **Registrar adelanto** en la hoja para pagos adicionales antes de la llegada.
 
-Desde **Hojas de consumo**, abre una hoja, elige **Abonar** en la fila de la noche o servicio y registra importe, fecha y medio de pago. **A/C** suma los abonos activos del cargo. El superadministrador puede anular un abono incorrecto desde su historial. Las noches con abonos vigentes deben conservarse en el rango y mantienen la tarifa acordada.
+Desde **Hojas de consumo**, abre una hoja, elige **Abonar** en la fila de la noche o servicio y registra importe, fecha y medio de pago. **A/C** suma los abonos activos del cargo. Cualquier rol puede anular un abono incorrecto desde su historial. Las noches con abonos vigentes deben conservarse en el rango y mantienen la tarifa acordada.
 
 Al cobrar con **tarjeta**, ingresa el importe base. El total a cobrar incluye el 5 % de comisión, redondeada al centavo por operación. El saldo del huésped y el total por tarjeta se calculan sobre el importe base. Esta regla también aplica a las ventas del Pub y los ingresos manuales. Los cobros nuevos por QR se registran por el importe base. Los recargos quedan visibles como referencia en cada movimiento.
 
-En **Hojas de consumo**, todos los roles pueden registrar abonos y devoluciones. Solo el superadministrador puede corregir abonos activos sin reembolsos. Desde el cargo, abre **Gestionar abonos**. Corregir solo el medio, por ejemplo de efectivo a QR, actualiza Caja en el turno del cobro original y deja constancia de quién hizo el cambio. Si se corrige el importe o la fecha, el abono anterior queda anulado y se registra su reemplazo. Solo el superadministrador puede anular abonos.
+En **Hojas de consumo**, todos los roles pueden registrar abonos y devoluciones. Todos los roles pueden corregir abonos activos sin reembolsos. Desde el cargo, abre **Gestionar abonos**. Corregir solo el medio, por ejemplo de efectivo a QR, actualiza Caja en el turno del cobro original y deja constancia de quién hizo el cambio. Si se corrige el importe o la fecha, el abono anterior queda anulado y se registra su reemplazo. Todos los roles pueden anular abonos conservando su historial.
 
 El cobro rápido de entrada muestra quién cobró en el comprobante y en las noches afectadas. Desde el comprobante o el historial de un abono se puede registrar un **reembolso parcial o total** con motivo. La hoja guarda el importe, la fecha, el motivo y la persona que lo registró. La devolución se registra como egreso por el medio original en Caja Chica o Caja Pub, según el cargo, y reduce lo abonado en la hoja. Los reembolsos de un cobro de estadía se aplican desde sus últimas partidas. El cobro conserva su historial y admite devoluciones adicionales hasta agotar el importe.
 
@@ -132,7 +132,7 @@ Las personas acompañantes sin nombre se guardan como `Acompañante 2`, etc. Fal
 | Consultar el turno propio y registrar ingresos y egresos manuales del día | Sí | Sí | Sí |
 | Consultar turnos del equipo, auditoría y configurar el cambio de hospedaje | No | Sí | Sí |
 | Ver cuaderno mensual | No | Sí | Sí |
-| Corregir o cancelar reservas; corregir o anular movimientos, cargos y abonos | No | No | Sí |
+| Corregir o cancelar reservas; corregir o anular movimientos, cargos y abonos | Sí | Sí | Sí |
 | Consultar Inventario Pub y registrar ventas | Sí | Sí | Sí |
 | Gestionar productos y categorías del Pub y registrar entradas o bajas de stock | No | Sí | Sí |
 
@@ -180,8 +180,8 @@ Referencias del stack: [React con Vite](https://react.dev/learn/build-a-react-ap
 
 ## Correcciones de caja y reservas
 
-Recepción y administración conservan las altas, confirmaciones, llegadas, salidas, ampliaciones, traslados, cobros y devoluciones. La edición general, cancelación y reactivación de reservas, los ajustes de tarifa y las correcciones/anulaciones de cargos, abonos y caja requieren al superadministrador; la API también verifica el permiso.
+Recepción, administración y superadministración pueden crear, editar, cambiar fechas y hora de llegada, cancelar y reactivar reservas, además de registrar entradas, salidas, ampliaciones, traslados, cobros y devoluciones. Todos pueden ajustar tarifas y corregir o anular cargos, abonos y movimientos manuales. Se conservan las validaciones de disponibilidad, importes y auditoría. Cancelar retira la reserva del calendario y libera su disponibilidad, manteniendo sus huéspedes, hojas y pagos. No equivale a borrarla definitivamente; recepción no dispone de borrado físico.
 
-Caja muestra la privada o el dormitorio y sus camas en los movimientos asociados a reservas, incluidos reembolsos y A/C CAMILO. En grupos y traslados muestra los lugares de la reserva sin duplicar camas. Los movimientos manuales y ventas directas del Pub no tienen alojamiento asociado. **Abrir hoja** permite revisar el cobro; desde allí el superadministrador puede anular un abono A/C CAMILO incorrecto. Para retirar también la reserva de prueba, cancélala por separado. Ambas anulaciones conservan el historial.
+Caja muestra la privada o el dormitorio y sus camas en los movimientos asociados a reservas, incluidos reembolsos y A/C CAMILO. En grupos y traslados muestra los lugares de la reserva sin duplicar camas. Los movimientos manuales y ventas directas del Pub no tienen alojamiento asociado. **Abrir hoja** permite revisar el cobro; desde allí se puede anular un abono A/C CAMILO incorrecto. Para retirar también la reserva de prueba, cancélala por separado. Ambas anulaciones conservan el historial.
 
-El superadministrador puede **Editar** movimientos manuales activos desde Caja, conservando autor y turno originales, o **Anular**. Los cobros automáticos se corrigen desde su hoja, para mantener coherentes los saldos. No se ofrece borrado físico ni limpieza masiva de producción.
+Todos los roles pueden **Editar** movimientos manuales activos desde Caja, conservando autor y turno originales, o **Anular**. Los cobros automáticos se corrigen desde su hoja, para mantener coherentes los saldos. No se ofrece borrado físico ni limpieza masiva de producción.

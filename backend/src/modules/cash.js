@@ -150,7 +150,6 @@ export function cashModule(db, admin) {
     res.status(201).json({ id, cash_cents: base, surcharge_cents: surcharge, collected_cents: base + surcharge });
   });
   router.patch("/:id", (req, res) => {
-    if (req.user.role !== "superadmin") fail("Solo el superadministrador puede corregir movimientos.", 403);
     const id = integer(Number(req.params.id), "Movimiento");
     const day = date(req.body.day);
     const detail = text(req.body.detail, "Concepto", 160);
@@ -165,8 +164,7 @@ export function cashModule(db, admin) {
     });
     res.json({ ok: true });
   });
-  router.post("/:id/void", admin, (req, res) => {
-    if (req.user.role !== "superadmin") fail("Solo el superadministrador puede anular movimientos.", 403);
+  router.post("/:id/void", (req, res) => {
     const id = integer(Number(req.params.id), "Movimiento");
     transaction(db, () => {
       const before = findEntry.get(id);

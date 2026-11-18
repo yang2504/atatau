@@ -14,7 +14,6 @@ import { occupiedUnits } from "../../lib/lodging";
 
 export function Calendar({
   data,
-  canCorrect,
   expanded,
   onToggleExpanded,
   onNew,
@@ -26,7 +25,6 @@ export function Calendar({
   onRooms,
 }: {
   data: Data;
-  canCorrect: boolean;
   expanded: boolean;
   onToggleExpanded: () => void;
   onNew: () => void;
@@ -357,7 +355,7 @@ export function Calendar({
                           return (
                             <Fragment key={`${r.id}-${span.starts_on}`}>
                             <button
-                              draggable={canCorrect && !!unit.active && !place && !r.added_guests.length && !moved}
+                              draggable={!!unit.active && !place && !r.added_guests.length && !moved}
                               className={`reservation-block ${r.status}${missedArrival ? " missed-arrival" : ""}${extendable || canOpenFolio ? " has-actions" : ""}${right - left === 1 ? " single-night" : ""}`}
                               style={{
                                 gridColumn: `${left + 2} / ${right + 2}`,

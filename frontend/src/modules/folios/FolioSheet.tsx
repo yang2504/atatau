@@ -4,7 +4,7 @@ import { addDays, api, daysBetween, shortDate, statusNames, today } from "../../
 import { cents, money, paymentMethods, lodgingPaymentMethods } from "../../lib/money";
 import { CardCharge } from "../../components/CardCharge";
 import { ReservationStaff } from "../reservations/ReservationStaff";
-import type { Data, Folio, FolioEntry, Payment, StayPayment, User } from "../../lib/types";
+import type { Data, Folio, FolioEntry, Payment, StayPayment } from "../../lib/types";
 
 type Refund = { id: number; day: string; payment_id: number; amount_cents: number; folio_cents: number; reason: string; method: string; author: string };
 type FolioDetails = { entries: FolioEntry[]; stay_payments: StayPayment[]; refunds: Refund[] };
@@ -12,13 +12,11 @@ type FolioDetails = { entries: FolioEntry[]; stay_payments: StayPayment[]; refun
 export function FolioSheet({
   folio,
   data,
-  user,
   onClose,
   onSaved,
 }: {
   folio: Folio;
   data: Data;
-  user: User;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -145,7 +143,7 @@ export function FolioSheet({
     const canCorrect = record.retained_cents === record.amount_cents;
     return (
       <div className="row-actions">
-        {canCorrect && user.role === "superadmin" && <button
+        {canCorrect && <button
           type="button" className="button secondary compact" disabled={busy}
           onClick={() => {
             closePayment();
@@ -158,7 +156,7 @@ export function FolioSheet({
         {record.method !== "A/C CAMILO" && <button type="button" className="button secondary compact" disabled={busy}
           onClick={() => { closePayment(); setRefundText(""); setRefunding({ payment: record, group }); }}>Reembolsar</button>}
         {!canCorrect && <small>Este abono ya tiene reembolsos.</small>}
-        {canCorrect && user.role === "superadmin" && <button type="button" className="text-button" disabled={busy}
+        {canCorrect && <button type="button" className="text-button" disabled={busy}
           onClick={() => {
             if (voiding === record.id)
               void save(paymentPath(record, group) + "/void", () => ({}), closePayment);
@@ -249,7 +247,7 @@ export function FolioSheet({
                   setAmountText((stayBalance / 100).toFixed(2));
                   setPaymentMethod("");
                 }}>Pagar estadía completa</button>}
-              {user.role === "superadmin" && !cancelled && reservation && !folio.joined_on && <button type="button" className="button secondary compact"
+              {!cancelled && reservation && !folio.joined_on && <button type="button" className="button secondary compact"
                 disabled={busy} aria-expanded={showRate} onClick={() => { const open = !showRate; closePayment(); setShowRate(open); }}>
                 Ajustar tarifa de hospedaje
               </button>}
@@ -463,7 +461,7 @@ export function FolioSheet({
                     {!row.author && !cashiers.length && "—"}
                   </td>
                   <td role="cell" className="folio-charge-actions">
-                    {user.role === "superadmin" && !!row.pub_charge && <button type="button" className="button secondary compact"
+                    {!!row.pub_charge && <button type="button" className="button secondary compact"
                       disabled={busy || row.paid_cents > 0} title={row.paid_cents > 0 ? "Reembolsa o anula primero los abonos del consumo." : undefined}
                       onClick={() => { closePayment(); setRemoving(row); }}>
                       Quitar consumo

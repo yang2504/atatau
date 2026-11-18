@@ -365,7 +365,6 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal((await request("/shifts", undefined, "GET", receptionLogin.cookie)).status, 403);
     const firstPath = `/reservations/${first.body.id}`;
     const arrived = { ...draft, status: "in_house", checked_in_by: setup.body.id };
-    assert.equal((await request(firstPath, arrived, "PUT", receptionLogin.cookie)).status, 403);
     assert.equal((await request(firstPath + "/operation", { ...arrived, guest_name: "Cambio no autorizado", nightly_cents: 1 }, "POST", receptionLogin.cookie)).status, 200);
     const arrivalRecord = (await request("/reservations")).body.find((row) => row.id === first.body.id);
     assert.equal(arrivalRecord.guest_name, draft.guest_name);
@@ -518,7 +517,7 @@ test("reservas, permisos y persistencia transaccional", async () => {
       assert.equal(row?.kind, "expense");
       assert.equal(row.author, ownTurn.author);
       assert.equal(row.physical_cents, physical);
-      assert.equal((await request(`/cash/${purchase.body.id}/void`, {}, "POST", receptionLogin.cookie)).status, 403);
+      assert.equal((await request(`/cash/${purchase.body.id}/void`, {}, "POST", receptionLogin.cookie)).status, 200);
     }
     const ownerTurn = (await request("/cash/turns/current")).body;
     assert.equal((await request(`/cash/turns/${ownerTurn.id}`, undefined, "GET", receptionLogin.cookie)).status, 404);
@@ -535,12 +534,7 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const adminLogin = await request("/auth/login", { username: "admin-demo", password: "clave-segura-prueba" }, "POST", "");
     const adminRequest = (path, body, method) => request(path, body, method, adminLogin.cookie);
     for (const session of [adminLogin.cookie, receptionLogin.cookie]) {
-      assert.equal((await request(firstPath, { ...arrived, status: "cancelled" }, "PUT", session)).status, 403);
-      assert.equal((await request(firstPath + "/operation", { status: "cancelled" }, "POST", session)).status, 409);
-      assert.equal((await request(`/cash/${manualCard.body.id}/void`, {}, "POST", session)).status, 403);
-      assert.equal((await request(`/cash/${manualCard.body.id}`, manual, "PATCH", session)).status, 403);
-      assert.equal((await request(path + `/payments/${qr.body.id}`, payment, "PATCH", session)).status, 403);
-      assert.equal((await request(path + `/payments/${qr.body.id}/void`, {}, "POST", session)).status, 403);
+      assert.equal((await request(firstPath, {}, "DELETE", session)).status, 404);
     }
     const manualBefore = db.prepare("SELECT turn_id,user_id FROM cash_entries WHERE id=?").get(manualCard.body.id);
     assert.equal((await request(`/cash/${manualCard.body.id}`, { ...manual, detail: "Ingreso corregido", method: "QR" }, "PATCH")).status, 200);
@@ -655,7 +649,7 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const single = await request(stayPath + "/payments", deposit);
     assert.equal(single.status, 201);
     const singlePath = stayPath + `/payments/${single.body.id}`;
-    assert.equal((await adminRequest(singlePath, deposit, "PATCH")).status, 403);
+    assert.equal((await adminRequest(singlePath, deposit, "PATCH")).status, 200);
     const changedAdvance = await request(singlePath, { ...deposit, amount_cents: 200 }, "PATCH");
     assert.equal(changedAdvance.status, 200);
     assert.equal((await request(stayPath)).body.entries[0].paid_cents, 300);
@@ -1038,9 +1032,7 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal((await request(removePath, { reason: "Hoja equivocada" }, "POST", "")).status, 401);
     assert.equal((await request(removePath, { reason: "" })).status, 400);
     assert.equal((await request(removePath.replace(String(guestSheet.id) + "/services", String(transferFolio.id) + "/services"), { reason: "Error" })).status, 404);
-    assert.equal((await request(removePath, { reason: "Huésped equivocado" }, "POST", consumptionLogin.cookie)).status, 403);
-    assert.equal((await request(removePath + "/", { reason: "Huésped equivocado" }, "POST", consumptionLogin.cookie)).status, 403);
-    assert.equal((await request(removePath, { reason: "Huésped equivocado" })).status, 200);
+    assert.equal((await request(removePath, { reason: "Huésped equivocado" }, "POST", consumptionLogin.cookie)).status, 200);
     assert.equal((await request("/pub")).body.find((item) => item.id === snack.body.id).stock, 1);
     assert.ok(!(await request(`/folios/${guestSheet.id}`)).body.entries.some((row) => row.service_id === mistakenCharge.service_id));
     assert.equal((await request(removePath, { reason: "Repetido" })).status, 404);
@@ -1059,12 +1051,11 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const correctCredit = { day: today, method: "QR", amount_cents: 1000, expected_method: "Efectivo" };
     const correctPath = `${paymentPath}/${creditPayment.body.id}`;
     assert.equal((await request(correctPath, correctCredit, "PATCH", "")).status, 401);
-    assert.equal((await request(correctPath, correctCredit, "PATCH", cashLogin.cookie)).status, 403);
-    assert.deepEqual((await request(correctPath, correctCredit, "PATCH")).body, { id: creditPayment.body.id });
+    assert.deepEqual((await request(correctPath, correctCredit, "PATCH", cashLogin.cookie)).body, { id: creditPayment.body.id });
     assert.equal((await request(correctPath, correctCredit, "PATCH")).status, 409);
     assert.deepEqual(db.prepare("SELECT turn_id,user_id FROM folio_payments WHERE id=?").get(creditPayment.body.id), originalTurn);
     assert.ok((await request("/audit")).body.some((event) => event.entity === "folio_payment" &&
-      event.entity_id === creditPayment.body.id && event.action === "replace" && event.author === setup.body.name));
+      event.entity_id === creditPayment.body.id && event.action === "replace" && event.author === "Recepción QA"));
     const pubIncome = (await request("/cash/daily?box=pub")).body.find((row) => row.source === "folio" && row.id === creditPayment.body.id);
     assert.equal(pubIncome.base_cents, 1000);
     assert.equal(pubIncome.physical_cents, 0);

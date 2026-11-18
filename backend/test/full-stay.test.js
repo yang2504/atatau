@@ -20,7 +20,6 @@ test("pago completo desde reserva y hoja: saldo por noches, cuentas individuales
   }
   try {
     cookie = (await request("/auth/setup", { name: "QA", username: "qa", password: "clave-ficticia-qa" })).cookie;
-    const owner = cookie;
     await request("/users", { name: "Recepción", username: "recepcion", password: "clave-ficticia-qa", role: "receptionist" });
     await request("/rooms", { name: "Privada", type: "private", capacity: 2 });
     await request("/rooms", { name: "Dormitorio", type: "dorm", capacity: 3 });
@@ -71,9 +70,8 @@ test("pago completo desde reserva y hoja: saldo por noches, cuentas individuales
     assert.equal(ledger.length, 1);
     assert.equal(ledger[0].base_cents, due);
     assert.equal(ledger[0].surcharge_cents, Math.floor((due * 5 + 50) / 100));
-    assert.equal((await request(individualPath + `/stay-payments/${paid.body.id}`, { day, method: "QR", amount_cents: due - 100 }, "PATCH")).status, 403);
-    // La corrección autorizada conserva la hoja destinataria del pago completo.
-    assert.equal((await request(individualPath + `/stay-payments/${paid.body.id}`, { day, method: "QR", amount_cents: due - 100 }, "PATCH", owner)).status, 200);
+    assert.equal((await request(individualPath + `/stay-payments/${paid.body.id}`, { day, method: "QR", amount_cents: due - 100 }, "PATCH")).status, 200);
+    // Recepción corrige el cobro sin trasladar dinero a otra hoja.
     assert.deepEqual((await request(otherPath)).body, otherBefore);
 
     // Pagar al salir liquida el saldo de todas las hojas y registra la salida en la misma transacción.

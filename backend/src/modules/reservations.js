@@ -219,8 +219,6 @@ export function saveReservation(db, body, user, id = null, extension = false, op
     const previousRooms = previous ? roomAssignments(db, id) : [];
     const extras = previous ? addedGuests(db, id) : [];
     const moves = previous ? movesFor(db, id) : [];
-    if (previous && !extension && !operational && user.role !== "superadmin")
-      fail("Solo el superadministrador puede corregir o cancelar reservas.", 403);
     if (operational) {
       const allowed = previous.status === "pending" ? ["confirmed", "in_house"]
         : previous.status === "confirmed" ? ["in_house"] : previous.status === "in_house" ? ["checked_out"] : [];
