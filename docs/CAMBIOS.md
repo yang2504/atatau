@@ -1,5 +1,13 @@
 # Cambios y decisiones importantes
 
+## 2026-11-19 — v1.16.0: Atatau.exe sin consola
+
+- El paquete Windows incluye Atatau.exe. Un doble clic inicia el servidor oculto y abre recepción en el navegador; su ventana ofrece Abrir recepción y Cerrar Atatau. Se puede minimizar y la X cierra el servidor propio de forma ordenada. No necesita CMD ni PowerShell para operar.
+- Se mantiene la ubicación de datos, los permisos, el calendario y el pago completo. No añade Electron ni dependencias npm. Se usa .NET Framework de Windows y se identifica el ejecutable con la versión de VERSION.txt.
+- El iniciador evita duplicados, detecta una instancia compatible ya abierta y solo detiene el Node que él inició. El cierre usa una tubería privada y el backend guarda sus datos antes de salir; el cierre de la tubería también lo detiene. No se añade una ruta HTTP de apagado.
+- Validación: npm test (13 pruebas), npm run check y compilación del paquete. La prueba nueva comprueba inicio y cierre por tubería, persistencia de caja, continuidad del turno e integridad de SQLite con datos ficticios temporales. Se revisa la ventana nativa y el funcionamiento de Atatau.exe extraído del ZIP con ATATAU_DB temporal. No se toca producción.
+- Sin migraciones nuevas. Pendiente: actualizar recepción desde el ZIP, crear opcionalmente un acceso directo a Atatau.exe y conservar el respaldo habitual de la carpeta de datos. El CMD anterior queda disponible para diagnóstico.
+
 ## 2026-11-18 — v1.15.1: restaurar modificaciones de recepción
 
 - Se corrigió la interpretación de permisos de v1.15.0: recepción y administración pueden crear, actualizar fechas/hora, modificar, cancelar y reactivar reservas, tanto en formulario como desde el calendario. Cancelar oculta la reserva del calendario y libera la disponibilidad sin borrar su historial. Recepción no dispone de borrado definitivo.

@@ -27,7 +27,10 @@ const address = `http://${host}:${port}`;
 console.log(`Hostel Atatau · ${address}`);
 if (process.platform === "win32" && process.argv.includes("--open"))
   execFile("explorer.exe", [address]);
+let stopping = false;
 function stop() {
+  if (stopping) return;
+  stopping = true;
   server.close(() => {
     closeOpenTurns(db);
     db.close();
@@ -36,3 +39,18 @@ function stop() {
 }
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
+// El ejecutable de Windows controla solo su propio proceso mediante una tubería privada.
+if (process.argv.includes("--desktop")) {
+  process.stdin.setEncoding("utf8");
+  let command = "";
+  process.stdin.on("data", (chunk) => {
+    command += chunk;
+    if (command.includes("\n")) {
+      if (command.split("\n")[0].trim() === "shutdown") stop();
+      command = "";
+    }
+  });
+  process.stdin.on("end", stop);
+  process.stdin.on("error", stop);
+  process.stdin.resume();
+}

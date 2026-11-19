@@ -1,20 +1,20 @@
 # Hostel Atatau
 
-Versión **v1.15.1** · 18 de noviembre de 2026. El ZIP de Windows incluye `VERSION.txt` para identificar la versión instalada.
+Versión **v1.16.0** · 19 de noviembre de 2026. El ZIP de Windows incluye `VERSION.txt` para identificar la versión instalada.
 
 Sistema web local para recepción. **Primera base funcional**, con React + TypeScript + Vite en `frontend/` y Node.js + Express + SQLite en `backend/`. Los datos se guardan en un archivo local; no se usa ningún servicio externo para operar.
 
 ## Usar en Windows sin instalar herramientas
 
-Descarga el ZIP de Windows x64 desde [Releases](https://github.com/yang2504/atatau/releases/latest). Extrae toda la carpeta y abre **Iniciar-Atatau.cmd**. Se abrirá [Hostel Atatau](http://127.0.0.1:3001) en el navegador. Deja la ventana de la aplicación abierta mientras trabajas. Para detenerla, pulsa `Ctrl+C` en esa ventana.
+Descarga el ZIP de Windows x64 desde [Releases](https://github.com/yang2504/atatau/releases/latest). Extrae toda la carpeta y abre **Atatau.exe** con doble clic. La aplicación inicia el sistema sin mostrar CMD ni PowerShell y abre [Hostel Atatau](http://127.0.0.1:3001) en tu navegador. Mantén abierta la pequeña ventana de Atatau mientras trabajas; puedes minimizarla. Usa **Abrir recepción** para volver al navegador y **Cerrar Atatau**, o la X de esa ventana, para detener el sistema de forma ordenada. Cerrar solo el navegador no detiene Atatau.
 
-Si aparece un mensaje de archivo faltante, haz clic derecho en el ZIP y elige **Extraer todo**. Abre el archivo de inicio desde la carpeta extraída, al lado de `runtime`, `backend` y `frontend`.
+Si aparece un mensaje de archivo faltante, haz clic derecho en el ZIP y elige **Extraer todo**. Abre Atatau.exe desde la carpeta extraída, al lado de `runtime`, `backend` y `frontend`. Puedes crear un acceso directo de Atatau.exe en el escritorio con las opciones habituales de Windows.
 
-El paquete es para Windows 10/11 de 64 bits e incluye Node.js, SQLite, el servidor y la interfaz compilada. Usa el navegador instalado en la computadora. Una vez descargado y extraído, funciona sin internet, npm ni permisos de administrador.
+El paquete es para Windows 10/11 de 64 bits e incluye Atatau.exe, Node.js, SQLite, el servidor y la interfaz compilada. El iniciador usa .NET Framework 4, incluido en Windows 10/11. Usa el navegador instalado en la computadora. Una vez descargado y extraído, funciona sin internet, npm ni permisos de administrador.
 
 Los datos del paquete se guardan en `%LOCALAPPDATA%\HostelAtatau\data` para la cuenta de Windows que lo ejecuta. Puedes abrir esa ubicación con `Win+R`.
 
-Para actualizar en la PC de recepción, cierra Atatau con `Ctrl+C` y copia la carpeta de datos como respaldo. Descarga el ZIP de la nueva versión, extráelo en una carpeta nueva y abre su `Iniciar-Atatau.cmd` desde la misma cuenta de Windows. El sistema abrirá la base existente y aplicará las migraciones. Verifica tu sesión y tus reservas antes de retirar el acceso directo anterior.
+Para actualizar en la PC de recepción, cierra Atatau con **Cerrar Atatau** (o Ctrl+C si usabas el iniciador antiguo) y copia la carpeta de datos como respaldo. Descarga el ZIP de la nueva versión, extráelo en una carpeta nueva y abre su `Atatau.exe` desde la misma cuenta de Windows. El sistema abrirá la base existente y aplicará las migraciones. Verifica tu sesión y tus reservas antes de retirar el acceso directo anterior.
 
 Si vas a trasladar una base de desarrollo, detén las dos instancias y copia el contenido de `backend/data/` a `%LOCALAPPDATA%\HostelAtatau\data` antes del primer arranque del paquete. Respalda la carpeta de destino si ya contiene datos.
 
@@ -43,7 +43,7 @@ Abrir **http://127.0.0.1:3001**. En este modo Node sirve tanto el frontend compi
 
 Si el arranque indica `EADDRINUSE`, el puerto ya está ocupado. Prueba abrir la dirección indicada. Si ya está abierta una instancia del sistema y necesitas reiniciarla, pulsa `Ctrl+C` en su terminal antes de volver a ejecutar el comando.
 
-Para generar el paquete de Windows desde el código, instala las dependencias con `npm ci` y ejecuta `powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1` desde la raíz. El script descarga la versión fijada de Node.js, verifica su suma SHA-256 y empaqueta solo los componentes de ejecución.
+Para generar el paquete de Windows desde el código, instala las dependencias con `npm ci` y ejecuta `powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1` desde la raíz. El script compila Atatau.exe con el compilador de .NET Framework de Windows, incorpora la versión de VERSION.txt, descarga la versión fijada de Node.js, verifica su suma SHA-256 y empaqueta solo los componentes de ejecución. Iniciar-Atatau.cmd se conserva como alternativa de diagnóstico con consola.
 
 ## Qué funciona
 
@@ -185,3 +185,5 @@ Recepción, administración y superadministración pueden crear, editar, cambiar
 Caja muestra la privada o el dormitorio y sus camas en los movimientos asociados a reservas, incluidos reembolsos y A/C CAMILO. En grupos y traslados muestra los lugares de la reserva sin duplicar camas. Los movimientos manuales y ventas directas del Pub no tienen alojamiento asociado. **Abrir hoja** permite revisar el cobro; desde allí se puede anular un abono A/C CAMILO incorrecto. Para retirar también la reserva de prueba, cancélala por separado. Ambas anulaciones conservan el historial.
 
 Todos los roles pueden **Editar** movimientos manuales activos desde Caja, conservando autor y turno originales, o **Anular**. Los cobros automáticos se corrigen desde su hoja, para mantener coherentes los saldos. No se ofrece borrado físico ni limpieza masiva de producción.
+
+Si Atatau ya está abierto, otro doble clic en Atatau.exe vuelve a abrir la recepción y no inicia un segundo servidor. Si se encuentra una instancia anterior iniciada por separado, el ejecutable la reconoce cuando es compatible y no la detiene al cerrar su ventana. Para actualizar desde una versión antigua, cierra primero esa versión; si el puerto está ocupado por otro programa, Atatau avisa sin modificar su base.

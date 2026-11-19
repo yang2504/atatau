@@ -60,7 +60,7 @@ export function createApp(db) {
       return res.status(400).json({ error: "Envía un objeto JSON válido." });
     next();
   });
-  app.get("/api/health", (req, res) => res.json({ ok: true }));
+  app.get("/api/health", (req, res) => res.json({ ok: true, app: "hostel-atatau" }));
   const users = userModule(db);
   app.use("/api/auth", users.router);
   app.use("/api", users.requireUser);

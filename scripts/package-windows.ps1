@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Output = (Join-Path (Get-Location) 'Hostel-Atatau-Windows-x64.zip')
 )
 
@@ -23,6 +23,19 @@ try {
     Copy-Item -LiteralPath docs -Destination $stage -Recurse
     Copy-Item -LiteralPath backend/package.json, backend/src -Destination "$stage/backend" -Recurse
     Copy-Item -LiteralPath frontend/package.json, frontend/dist -Destination "$stage/frontend" -Recurse
+    $compiler = Join-Path $env:WINDIR 'Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+    if (!(Test-Path -LiteralPath $compiler)) { throw 'No se encontró el compilador de .NET Framework de Windows.' }
+    $version = (Get-Content -LiteralPath (Join-Path $root 'VERSION.txt') -Raw).Trim()
+    if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'VERSION.txt debe contener una versión numérica mayor.menor.parche.' }
+    $assembly = Join-Path $temp 'AssemblyInfo.cs'
+    @"
+[assembly: System.Reflection.AssemblyTitle("Hostel Atatau")]
+[assembly: System.Reflection.AssemblyVersion("$version.0")]
+[assembly: System.Reflection.AssemblyFileVersion("$version.0")]
+"@ | Set-Content -LiteralPath $assembly -Encoding UTF8
+    $launcherSource = Join-Path $root 'scripts\windows\Atatau.cs'
+    & $compiler /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$stage\Atatau.exe" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll $launcherSource $assembly
+    if ($LASTEXITCODE -ne 0) { throw 'Falló la creación de Atatau.exe.' }
     Get-Content -LiteralPath scripts/windows/Iniciar-Atatau.cmd |
         Set-Content -LiteralPath "$stage/Iniciar-Atatau.cmd" -Encoding Ascii
     Push-Location $stage

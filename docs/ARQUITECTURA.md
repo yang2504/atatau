@@ -131,3 +131,9 @@ Las altas y operaciones de reserva aceptan `stay_payment: {method, amount_cents}
 ## 2026-11-18 — Corrección del alcance de permisos (v1.15.1)
 
 Se retira la restricción de modificaciones de v1.15.0. La interfaz de todos los roles utiliza PUT para editar reservas, habilita campos y acciones de cancelación/reactivación y permite arrastrar las reservas compatibles. La ruta de operación permanece para compatibilidad; el borrado físico no tiene endpoint. Caja y hojas vuelven a permitir correcciones y anulaciones a cualquier sesión activa. Las anulaciones son lógicas, preservan registros, saldos, autoría y auditoría, y las canceladas no se incluyen en el calendario. No se amplían permisos de usuarios, productos ni configuración administrativa.
+
+## 2026-11-19 — Inicio de escritorio para Windows (v1.16.0)
+
+Atatau.exe es un ejecutable WinForms de .NET Framework compilado desde scripts/windows/Atatau.cs, sin bibliotecas adicionales. Un mutex local evita dos iniciadores simultáneos. La aplicación inicia el Node incluido con CreateNoWindow y una tubería privada de entrada, conserva ATATAU_DB explícito o usa la misma ubicación LocalAppData del iniciador anterior. Tras comprobar /api/health (ok y app=hostel-atatau), abre el navegador predeterminado. Su ventana permite abrir recepción y cerrar el proceso propio; nunca detiene una instancia externa reconocida.
+
+El argumento --desktop activa el cierre por comando shutdown en stdin o por cierre de la tubería si el iniciador termina inesperadamente. No existe una ruta HTTP de apagado. El backend cierra el servidor y SQLite usando su cierre habitual y conserva la vigencia de turnos con horario. El ejecutable espera la salida del proceso antes de cerrar su ventana, sin terminarlo a la fuerza. El empaquetador compila como winexe x64 y fija las versiones del archivo y ensamblado desde VERSION.txt. Se conserva el CMD para diagnóstico. No cambia el esquema ni la ubicación de los datos.
