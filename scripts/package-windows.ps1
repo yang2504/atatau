@@ -34,7 +34,8 @@ try {
 [assembly: System.Reflection.AssemblyFileVersion("$version.0")]
 "@ | Set-Content -LiteralPath $assembly -Encoding UTF8
     $launcherSource = Join-Path $root 'scripts\windows\Atatau.cs'
-    & $compiler /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$stage\Atatau.exe" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll $launcherSource $assembly
+    $launcherIcon = Join-Path $root 'scripts\windows\Atatau.ico'
+    & $compiler "/win32icon:$launcherIcon" /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$stage\Atatau.exe" /reference:System.Windows.Forms.dll /reference:System.Drawing.dll $launcherSource $assembly
     if ($LASTEXITCODE -ne 0) { throw 'Falló la creación de Atatau.exe.' }
     Get-Content -LiteralPath scripts/windows/Iniciar-Atatau.cmd |
         Set-Content -LiteralPath "$stage/Iniciar-Atatau.cmd" -Encoding Ascii

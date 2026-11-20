@@ -1,12 +1,12 @@
 # Hostel Atatau
 
-Versión **v1.16.0** · 19 de noviembre de 2026. El ZIP de Windows incluye `VERSION.txt` para identificar la versión instalada.
+Versión **v1.17.0** · 20 de noviembre de 2026. El ZIP de Windows incluye `VERSION.txt` para identificar la versión instalada.
 
 Sistema web local para recepción. **Primera base funcional**, con React + TypeScript + Vite en `frontend/` y Node.js + Express + SQLite en `backend/`. Los datos se guardan en un archivo local; no se usa ningún servicio externo para operar.
 
 ## Usar en Windows sin instalar herramientas
 
-Descarga el ZIP de Windows x64 desde [Releases](https://github.com/yang2504/atatau/releases/latest). Extrae toda la carpeta y abre **Atatau.exe** con doble clic. La aplicación inicia el sistema sin mostrar CMD ni PowerShell y abre [Hostel Atatau](http://127.0.0.1:3001) en tu navegador. Mantén abierta la pequeña ventana de Atatau mientras trabajas; puedes minimizarla. Usa **Abrir recepción** para volver al navegador y **Cerrar Atatau**, o la X de esa ventana, para detener el sistema de forma ordenada. Cerrar solo el navegador no detiene Atatau.
+Descarga el ZIP de Windows x64 desde [Releases](https://github.com/yang2504/atatau/releases/latest). Extrae toda la carpeta y abre **Atatau.exe** con doble clic. La aplicación inicia el sistema sin mostrar CMD ni PowerShell y abre [Hostel Atatau](http://127.0.0.1:3001) en tu navegador. El icono de Atatau queda junto al reloj de Windows, a veces bajo la flecha de iconos ocultos. Haz doble clic en él para volver a recepción o clic derecho y **Cerrar Atatau** para detener el sistema. Cerrar el navegador deja el sistema disponible desde ese icono.
 
 Si aparece un mensaje de archivo faltante, haz clic derecho en el ZIP y elige **Extraer todo**. Abre Atatau.exe desde la carpeta extraída, al lado de `runtime`, `backend` y `frontend`. Puedes crear un acceso directo de Atatau.exe en el escritorio con las opciones habituales de Windows.
 
@@ -46,6 +46,8 @@ Si el arranque indica `EADDRINUSE`, el puerto ya está ocupado. Prueba abrir la 
 Para generar el paquete de Windows desde el código, instala las dependencias con `npm ci` y ejecuta `powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1` desde la raíz. El script compila Atatau.exe con el compilador de .NET Framework de Windows, incorpora la versión de VERSION.txt, descarga la versión fijada de Node.js, verifica su suma SHA-256 y empaqueta solo los componentes de ejecución. Iniciar-Atatau.cmd se conserva como alternativa de diagnóstico con consola.
 
 ## Qué funciona
+
+- **Caja Pub** muestra los ingresos y egresos de todos los turnos en un registro continuo. El saldo acumulado se calcula por separado para efectivo y transferencias. Cada movimiento conserva su autor y fecha. Las anulaciones quedan visibles y se excluyen del saldo. Caja Chica conserva su vista por turno.
 
 - Calendario de 7, 14 o 21 días (14 al abrir) con encabezado fijo, iconos de personas y filas por cama. Permite seleccionar rangos, navegar por fechas y crear reservas. Todos los roles pueden editar y cancelar reservas. Arrastrar una reserva de una cama o privada conserva el número de noches. Las reservas de varias camas se reubican desde su formulario.
 - La cuadrícula ocupa el espacio disponible y se desplaza por separado, con las fechas y los nombres de habitación visibles al recorrer filas y columnas. Al abrir un modal, el fondo conserva su posición. En ventanas muy pequeñas también puedes desplazar la página para llegar a los controles.
@@ -186,4 +188,4 @@ Caja muestra la privada o el dormitorio y sus camas en los movimientos asociados
 
 Todos los roles pueden **Editar** movimientos manuales activos desde Caja, conservando autor y turno originales, o **Anular**. Los cobros automáticos se corrigen desde su hoja, para mantener coherentes los saldos. No se ofrece borrado físico ni limpieza masiva de producción.
 
-Si Atatau ya está abierto, otro doble clic en Atatau.exe vuelve a abrir la recepción y no inicia un segundo servidor. Si se encuentra una instancia anterior iniciada por separado, el ejecutable la reconoce cuando es compatible y no la detiene al cerrar su ventana. Para actualizar desde una versión antigua, cierra primero esa versión; si el puerto está ocupado por otro programa, Atatau avisa sin modificar su base.
+Si Atatau ya está abierto, otro doble clic en Atatau.exe vuelve a abrir la recepción y no inicia un segundo servidor. Si se encuentra una instancia anterior iniciada por separado, el ejecutable la reconoce cuando es compatible y la deja funcionando al salir del iniciador. Para actualizar desde una versión antigua, cierra primero esa versión; si el puerto está ocupado por otro programa, Atatau avisa sin modificar su base.

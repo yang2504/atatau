@@ -1,5 +1,11 @@
 # Cambios y decisiones importantes
 
+## 2026-11-20 — v1.17.0
+
+- Caja Pub acumula sus ingresos y egresos entre turnos, con saldo separado para efectivo y transferencias. Se reutiliza el libro de caja y se mantiene la auditoría de cada movimiento.
+- Atatau.exe abre el navegador y queda junto al reloj. El menú del icono permite abrir recepción o cerrar el servidor. El símbolo del logo adjunto se añade al ejecutable, área de notificación, inicio de sesión, menú y pestaña web.
+- Validación con los comandos del proyecto y el iniciador extraído del ZIP usando una base temporal. No requiere migración. Pendiente en recepción, reemplazar la carpeta de la versión anterior por el paquete nuevo.
+
 ## 2026-11-19 — v1.16.0: Atatau.exe sin consola
 
 - El paquete Windows incluye Atatau.exe. Un doble clic inicia el servidor oculto y abre recepción en el navegador; su ventana ofrece Abrir recepción y Cerrar Atatau. Se puede minimizar y la X cierra el servidor propio de forma ordenada. No necesita CMD ni PowerShell para operar.

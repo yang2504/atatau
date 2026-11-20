@@ -101,7 +101,7 @@ function Auth({
     <main className="auth-shell">
       <section className="auth-brand">
         <div className="brand">
-          <span className="brand-symbol">a</span>
+          <img className="brand-symbol" src="/atatau-mark.png" alt="" width="44" height="44" />
           <div>
             atatau<small>HOSTEL · RECEPCIÓN</small>
           </div>
@@ -362,7 +362,7 @@ export default function App() {
       <a className="skip-link" href="#workspace-content">Ir al contenido</a>
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-symbol">a</span>
+          <img className="brand-symbol" src="/atatau-mark.png" alt="" width="44" height="44" />
           <div>
             atatau<small>HOSTEL · RECEPCIÓN</small>
           </div>

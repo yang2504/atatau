@@ -12,26 +12,29 @@ try {
     @'
 using System;
 using System.Net;
+using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 internal static class LauncherTest {
     [STAThread] private static int Main() {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        var form = (Form)Activator.CreateInstance(typeof(Atatau), true);
-        Button open = null, stop = null;
-        foreach (Control control in form.Controls) {
-            if (control.Text == "Abrir recepción") open = control as Button;
-            if (control.Text == "Cerrar Atatau") stop = control as Button;
-        }
-        if (open == null || stop == null) return 2;
+        var context = (ApplicationContext)Activator.CreateInstance(typeof(Atatau), true);
+        var tray = (NotifyIcon)typeof(Atatau).GetField("tray", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(context);
+        var open = (ToolStripMenuItem)tray.ContextMenuStrip.Items[0];
+        var stop = (ToolStripMenuItem)tray.ContextMenuStrip.Items[1];
+        if (!tray.Visible || Application.OpenForms.Count != 0 || open.Text != "Abrir recepción" || stop.Text != "Cerrar Atatau") return 2;
         bool ready = false;
-        form.Shown += async delegate {
-            for (int attempt=0; attempt<100 && !open.Enabled; attempt++) await Task.Delay(100);
-            ready = open.Enabled;
+        var check = new Timer { Interval = 100 };
+        int attempts = 0;
+        check.Tick += delegate {
+            if (!open.Enabled && ++attempts < 100) return;
+            check.Dispose();
+            ready = open.Enabled && Application.OpenForms.Count == 0;
             stop.PerformClick();
         };
-        Application.Run(form);
+        check.Start();
+        Application.Run(context);
         if (!ready) return 3;
         try {
             var request = (HttpWebRequest)WebRequest.Create("http://127.0.0.1:3001/api/health");

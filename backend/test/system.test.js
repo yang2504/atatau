@@ -1061,6 +1061,13 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal(pubIncome.physical_cents, 0);
     const pubRefund = await request(`${paymentPath}/${creditPayment.body.id}/refunds`, { amount_cents: 250, reason: "Ajuste" }, "POST", cashLogin.cookie);
     assert.equal(pubRefund.status, 201, pubRefund.body.error);
+    assert.equal((await request("/cash/pub", undefined, "GET", "")).status, 401);
+    const pubAcrossTurns = (await request("/cash/pub", undefined, "GET", cashLogin.cookie)).body;
+    assert.ok(pubAcrossTurns.every((row) => row.cash_box === "pub"));
+    assert.ok(pubAcrossTurns.some((row) => row.source === "pop" && row.kind === "income" && row.base_cents === 3000));
+    assert.ok(pubAcrossTurns.some((row) => row.source === "folio" && row.id === creditPayment.body.id && row.base_cents === 1000));
+    assert.ok(pubAcrossTurns.some((row) => row.source === "refund" && row.id === pubRefund.body.id && row.base_cents === 250));
+    assert.ok(pubAcrossTurns.some((row) => row.source === "manual" && row.voided && row.kind === "expense"));
     assert.equal((await request("/cash/daily?box=pub")).body.find((row) => row.source === "refund" && row.id === pubRefund.body.id).base_cents, 250);
     assert.equal((await request(correctPath, { ...correctCredit, expected_method: "QR" }, "PATCH")).status, 409);
     assert.ok(!(await request("/cash/daily")).body.some((row) => row.source === "refund" && row.id === pubRefund.body.id));

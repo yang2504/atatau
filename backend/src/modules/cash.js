@@ -72,6 +72,10 @@ export function cashModule(db, admin) {
     res.json({ month, estimated_cents: reservations.reduce((sum, row) => sum + row.amount_cents, 0), reservations });
   });
   const list = db.prepare(ledger("ledger.day>=? AND ledger.day<?"));
+  const pubLedger = db.prepare(ledger("1=1"));
+  router.get("/pub", (req, res) => {
+    res.json(pubLedger.all(canSeeSuperadmin(req.user), "pub"));
+  });
   const listTurn = db.prepare(ledger("ledger.turn_id=?"));
   const findEntry = db.prepare("SELECT id,day,kind,detail,base_cents,surcharge_cents,method,voided,cash_box,turn_id FROM cash_entries WHERE id=?");
   function period(req, res, start, end) {

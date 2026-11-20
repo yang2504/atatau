@@ -86,8 +86,9 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
     setTransferMethod(account === "cash" ? "Efectivo" : "QR");
     setMovementKind(kind);
   }
-  const byTurn = view === "current" || view === "history";
-  const path = view === "camilo" ? false : view === "monthly" ? `/cash/monthly?month=${month}&box=${box}`
+  const isPub = box === "pub";
+  const byTurn = !isPub && (view === "current" || view === "history");
+  const path = isPub ? "/cash/pub" : view === "camilo" ? false : view === "monthly" ? `/cash/monthly?month=${month}&box=${box}`
     : byTurn ? (view === "current" || turnId) && `/cash/turns/${view === "current" ? "current" : turnId}?box=${box}`
     : `/cash/daily?box=${box}`;
   useEffect(() => {
@@ -144,7 +145,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
     setEntries(null);
     setError("");
     setBox(next);
-    if (view === "camilo") setView("current");
+    setView("current");
   }
 
   async function record(event: FormEvent<HTMLFormElement>) {
@@ -190,7 +191,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
       <button className={box === "petty" ? "active" : ""} aria-pressed={box === "petty"} onClick={() => switchBox("petty")} disabled={busy}>Caja Chica</button>
       <button className={box === "pub" ? "active" : ""} aria-pressed={box === "pub"} onClick={() => switchBox("pub")} disabled={busy}>Caja Pub</button>
     </div>
-    <div className="tabs" role="group" aria-label="Período de caja">
+    {!isPub && <div className="tabs" role="group" aria-label="Período de caja">
       <button className={view === "current" ? "active" : ""} aria-pressed={view === "current"} onClick={() => switchView("current")}>Mi turno</button>
       <button className={view === "history" ? "active" : ""} aria-pressed={view === "history"} onClick={() => switchView("history")}>Historial de turnos</button>
       {box === "petty" && <button className={view === "camilo" ? "active" : ""} aria-pressed={view === "camilo"}
@@ -199,7 +200,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
         <button className={view === "daily" ? "active" : ""} aria-pressed={view === "daily"} onClick={() => switchView("daily")}>Caja diaria</button>
         <button className={view === "monthly" ? "active" : ""} aria-pressed={view === "monthly"} onClick={() => switchView("monthly")}>Cuaderno mensual</button>
       </>}
-    </div>
+    </div>}
     {!movementKind && !voiding && <ErrorBox message={error} />}
     {notice && <p className="group-booking-summary" role="status">{notice}</p>}
     <div>
@@ -229,10 +230,10 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
       </section> : <section className="panel">
         <div className="section-toolbar">
           <div>
-            <h2>{boxLabel} · {byTurn ? (turn?.id ? `Turno #${turn.id}` : view === "current" ? "Mi turno" : "Historial de turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
-            <p className="muted">{box === "pub" ? "Ventas del Pub y abonos de sus consumos a cuenta." : "Hospedaje, servicios e ingresos de recepción."}</p>
+            <h2>{boxLabel} · {isPub ? "Registro continuo" : byTurn ? (turn?.id ? `Turno #${turn.id}` : view === "current" ? "Mi turno" : "Historial de turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
+            <p className="muted">{box === "pub" ? "Los ingresos y egresos se acumulan entre turnos." : "Hospedaje, servicios e ingresos de recepción."}</p>
           </div>
-          {view === "current" && turn?.started_at && <div className="row-actions">
+          {(isPub || view === "current" && turn?.started_at) && <div className="row-actions">
             {box === "petty" && <button className="button primary" onClick={() => openMovement("income")}><Icon name="plus" size={16} /> Registrar ingreso</button>}
             <button type="button" className="button secondary" onClick={() => openMovement("expense")}>Registrar egreso</button>
           </div>}
@@ -268,7 +269,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
               onClick={() => setMovementFilter(movementFilter === "expense" ? "all" : "expense")}>
               Egresos <strong>{total(expenses)}</strong>
             </button>
-            <span className="ledger-net">Neto del período <strong>{total(income - expenses)}</strong></span>
+            <span className="ledger-net">{isPub ? "Saldo acumulado" : "Neto del período"} <strong>{total(income - expenses)}</strong></span>
           </div>
           {account === "cash" && byTurn && <p className="muted">Saldo inicial del turno · {money(0)}</p>}
           {account === "transfer" && <p className="muted">
@@ -282,7 +283,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
               aria-pressed={movementFilter === value} onClick={() => setMovementFilter(value)}>{label}</button>)}
         </div>
         {movementFilter === "expense" && <div className="cash-expense-heading">
-          <h3>Egresos del período</h3>
+          <h3>{isPub ? "Egresos acumulados" : "Egresos del período"}</h3>
           <span>{accountEntries?.filter((row) => row.kind === "expense" && !row.voided).length ?? 0} vigentes · {total(expenses)}</span>
         </div>}
         {!entries && !error && <p className="quiet-state" role="status">Cargando movimientos…</p>}
@@ -291,7 +292,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
           <table>
             <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe base</th><th>Acción</th></tr></thead>
             <tbody>{visibleEntries.map((row) => <tr key={`${row.source}-${row.id}`} className={row.voided ? "void-row" : row.kind === "expense" ? "ledger-expense-row" : undefined}>
-              <td>{shortDate(row.day, byTurn)}{row.recorded_at && <small className="cell-sub">Registro {localDateTime(row.recorded_at)}</small>}</td>
+              <td>{shortDate(row.day, byTurn || isPub)}{row.recorded_at && <small className="cell-sub">Registro {localDateTime(row.recorded_at)}</small>}</td>
               <td><span className={`tag ledger-kind ${row.kind}`}>{row.kind === "expense" ? "Egreso" : "Ingreso"}</span>
                 <strong>{row.detail}</strong>{row.accommodation && <small className="cell-sub"><strong>{row.accommodation}</strong></small>}<small className="cell-sub">
                   {box === "pub" && row.source === "manual" && row.kind === "income" ? "Ingreso manual histórico" : sources[row.source]}

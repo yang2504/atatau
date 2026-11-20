@@ -7,16 +7,17 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
-internal sealed class Atatau : Form
+internal sealed class Atatau : ApplicationContext
 {
     private const string Address = "http://127.0.0.1:3001";
     private readonly string root = AppDomain.CurrentDomain.BaseDirectory;
-    private readonly Label status = new Label();
-    private readonly Button open = new Button();
-    private readonly Button stop = new Button();
+    private readonly NotifyIcon tray;
+    private readonly ContextMenuStrip menu = new ContextMenuStrip();
+    private readonly ToolStripMenuItem open = new ToolStripMenuItem("Abrir recepción") { Enabled = false };
+    private readonly ToolStripMenuItem stop = new ToolStripMenuItem("Cerrar Atatau");
+    private readonly Icon icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
     private Process server;
     private bool closing;
-    private bool stopped;
 
     [STAThread]
     private static int Main()
@@ -41,47 +42,44 @@ internal sealed class Atatau : Form
 
     private Atatau()
     {
-        Text = "Hostel Atatau";
-        ClientSize = new Size(450, 205);
-        AutoScaleMode = AutoScaleMode.Dpi;
-        Font = new Font("Segoe UI", 10);
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
-        StartPosition = FormStartPosition.CenterScreen;
-        var title = new Label { Text = "Hostel Atatau", Font = new Font("Segoe UI", 18, FontStyle.Bold),
-            Location = new Point(22, 18), Size = new Size(400, 40) };
-        status.Text = "Iniciando la recepción…";
-        status.SetBounds(24, 70, 400, 65);
-        open.Text = "Abrir recepción";
-        open.SetBounds(24, 150, 180, 34);
-        open.Enabled = false;
+        tray = new NotifyIcon { Text = "Hostel Atatau", Icon = icon ?? SystemIcons.Application, ContextMenuStrip = menu };
+        menu.Items.AddRange(new ToolStripItem[] { open, stop });
         open.Click += delegate { TryOpenBrowser(); };
-        stop.Text = "Cerrar Atatau";
-        stop.SetBounds(224, 150, 200, 34);
-        stop.Click += delegate { Close(); };
-        Controls.AddRange(new Control[] { title, status, open, stop });
-        Shown += async delegate { await StartServer(); };
-        FormClosing += async delegate(object sender, FormClosingEventArgs args)
+        tray.DoubleClick += delegate { if (open.Enabled) TryOpenBrowser(); };
+        stop.Click += async delegate { await StopServer(); };
+        tray.Visible = true;
+        var startup = new System.Windows.Forms.Timer { Interval = 1 };
+        startup.Tick += async delegate
         {
-            if (stopped) return;
-            if (server == null) { closing = stopped = true; return; }
-            args.Cancel = true;
-            if (closing) return;
-            closing = true;
-            open.Enabled = stop.Enabled = false;
-            status.Text = "Cerrando Atatau y guardando el estado del turno…";
-            try
-            {
-                if (!server.HasExited)
-                {
-                    try { server.StandardInput.WriteLine("shutdown"); server.StandardInput.Close(); }
-                    catch (IOException) { }
-                    await Task.Run(delegate { server.WaitForExit(); });
-                }
-            }
-            catch (InvalidOperationException) { }
-            finally { server.Dispose(); stopped = true; Close(); }
+            startup.Dispose();
+            await StartServer();
         };
+        startup.Start();
+    }
+
+    private async Task StopServer()
+    {
+        if (closing) return;
+        closing = true;
+        open.Enabled = stop.Enabled = false;
+        try
+        {
+            if (server != null && !server.HasExited)
+            {
+                try { server.StandardInput.Close(); }
+                catch (IOException) { }
+                await Task.Run(delegate { server.WaitForExit(); });
+            }
+        }
+        catch (InvalidOperationException) { }
+        finally
+        {
+            if (server != null) server.Dispose();
+            tray.Dispose();
+            menu.Dispose();
+            if (icon != null) icon.Dispose();
+            ExitThread();
+        }
     }
 
     private async Task StartServer()
@@ -92,7 +90,7 @@ internal sealed class Atatau : Form
             if (closing) return;
             if (alreadyRunning)
             {
-                status.Text = "Atatau ya estaba funcionando. Esta ventana no cerrará esa otra instancia.";
+                stop.Text = "Salir del iniciador";
                 open.Enabled = true;
                 TryOpenBrowser();
                 return;
@@ -121,20 +119,22 @@ internal sealed class Atatau : Form
                 if (await Task.Run((Func<bool>)Healthy))
                 {
                     if (closing) return;
-                    status.Text = "La recepción está abierta en tu navegador.\nMantén esta aplicación abierta mientras trabajas.";
                     open.Enabled = true;
                     TryOpenBrowser();
                     return;
                 }
                 await Task.Delay(250);
             }
-            if (!closing) status.Text = "No se pudo iniciar Atatau. Cierra otra versión que esté abierta y vuelve a intentarlo. Verifica también que la carpeta de datos se pueda escribir.";
+            if (!closing) throw new InvalidOperationException();
         }
         catch (Exception error)
         {
-            if (!closing) status.Text = error is FileNotFoundException ? error.Message
-                : "No se pudo abrir Atatau. Extrae el ZIP completo y comprueba que Windows permita ejecutar la aplicación.";
+            if (closing) return;
+            MessageBox.Show(error is FileNotFoundException ? error.Message
+                : "No se pudo iniciar Atatau. Revisa si otra versión está abierta o si la carpeta de datos permite escritura.",
+                "Hostel Atatau", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
+        await StopServer();
     }
 
     private static bool Healthy()
@@ -158,6 +158,6 @@ internal sealed class Atatau : Form
     private void TryOpenBrowser()
     {
         try { OpenBrowser(); }
-        catch { MessageBox.Show(this, "Abre " + Address + " en tu navegador.", "Atatau", MessageBoxButtons.OK, MessageBoxIcon.Information); }
+        catch { MessageBox.Show("Abre " + Address + " en tu navegador.", "Atatau", MessageBoxButtons.OK, MessageBoxIcon.Information); }
     }
 }

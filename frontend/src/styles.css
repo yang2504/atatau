@@ -337,17 +337,10 @@ small {
   line-height: 1;
 }
 .brand-symbol {
-  width: 39px;
+  width: 44px;
   height: 44px;
-  display: inline-grid;
-  place-items: center;
-  font-family: Georgia, serif;
-  font-size: 46px;
-  font-weight: 400;
-  border: 1.5px solid currentColor;
-  border-radius: 20px 20px 4px 4px;
-  line-height: 35px;
-  padding-bottom: 8px;
+  flex: none;
+  border-radius: 10px;
 }
 .brand small {
   font-size: 8px;
