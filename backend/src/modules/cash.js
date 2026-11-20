@@ -11,7 +11,7 @@ const places = `SELECT group_concat(place, ' · ') FROM (
   FROM reservation_occupancy oc JOIN units un ON un.id=oc.unit_id JOIN rooms rm ON rm.id=un.room_id
   WHERE oc.reservation_id=reservation.id ORDER BY rm.id,un.id
 )`;
-const ledger = (where) => `WITH ledger AS (
+const ledgerRows = `WITH ledger AS (
   SELECT 'manual' AS source,id,day,kind,detail,base_cents,surcharge_cents,method,user_id,voided,cash_box,turn_id
   FROM cash_entries
   UNION ALL
@@ -34,7 +34,8 @@ const ledger = (where) => `WITH ledger AS (
   UNION ALL
   SELECT 'pop',id,day,'income',detail,base_cents,surcharge_cents,method,user_id,0,'pub',turn_id
   FROM pop_movements WHERE kind='sale' AND folio_service_id IS NULL
-)
+)`;
+const ledger = (where) => `${ledgerRows}
 SELECT ledger.source,ledger.id,ledger.day,ledger.kind,ledger.detail,ledger.base_cents,
   ledger.surcharge_cents,ledger.method,ledger.voided,ledger.cash_box,
   reservation.id AS reservation_id,
@@ -76,6 +77,15 @@ export function cashModule(db, admin) {
   router.get("/pub", (req, res) => {
     res.json(pubLedger.all(canSeeSuperadmin(req.user), "pub"));
   });
+  const pubSummary = db.prepare(`${ledgerRows}
+    SELECT
+      COALESCE(SUM(CASE WHEN method='Efectivo' THEN signed ELSE 0 END),0) AS cash_cents,
+      COALESCE(SUM(CASE WHEN method<>'Efectivo' THEN signed ELSE 0 END),0) AS transfer_cents
+    FROM (
+      SELECT method, CASE kind WHEN 'income' THEN base_cents ELSE -base_cents END AS signed
+      FROM ledger WHERE cash_box='pub' AND voided=0 AND method<>'A/C CAMILO'
+    )`);
+  router.get("/pub/summary", (req, res) => res.json(pubSummary.get()));
   const listTurn = db.prepare(ledger("ledger.turn_id=?"));
   const findEntry = db.prepare("SELECT id,day,kind,detail,base_cents,surcharge_cents,method,voided,cash_box,turn_id FROM cash_entries WHERE id=?");
   function period(req, res, start, end) {

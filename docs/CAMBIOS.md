@@ -1,5 +1,11 @@
 # Cambios y decisiones importantes
 
+## 2026-11-20 — v1.18.0
+
+- Caja muestra una tarjeta con el saldo acumulado de Caja Pub, con efectivo y transferencias por separado. La tabla del Pub vuelve a mostrar el turno activo de la persona conectada, con ingresos, egresos y neto propios.
+- La tarjeta usa todas las operaciones vigentes del Pub y se refresca al registrar, corregir o anular movimientos, al volver a la ventana y cada 30 segundos mientras Caja está abierta.
+- Validación con las pruebas del proyecto, revisión visual con datos ficticios y verificación del ZIP de Windows. La prueba de API cubre movimientos de distintos turnos, un egreso, su anulación y el detalle limitado al turno propio. No requiere migración. Pendiente en recepción, actualizar la aplicación con el ZIP.
+
 ## 2026-11-20 — v1.17.0
 
 - Caja Pub acumula sus ingresos y egresos entre turnos, con saldo separado para efectivo y transferencias. Se reutiliza el libro de caja y se mantiene la auditoría de cada movimiento.

@@ -144,3 +144,8 @@ El argumento --desktop activa el cierre por comando shutdown en stdin o por cier
 `GET /api/cash/pub` devuelve el libro de Pub para cualquier sesión autenticada, con el enmascaramiento de autor que aplica al resto de Caja. Usa las mismas fuentes y mantiene los registros anulados para consulta. La vista suma las partidas activas por medio, con los reembolsos como egresos. Los movimientos siguen vinculados a su turno para auditoría. Las consultas de Caja Chica conservan sus filtros.
 
 Atatau.exe usa NotifyIcon y ApplicationContext para vivir en el área de notificación. El menú abre recepción en el navegador predeterminado o cierra el proceso propio a través de su tubería privada. El icono del ejecutable y del área de notificación usan el mismo símbolo que el acceso, el menú y la pestaña en la web. No hay migración de datos.
+
+
+## 2026-11-20 — Saldo acumulado del Pub y detalle de mi turno
+
+`GET /api/cash/pub/summary` devuelve el neto acumulado de Caja Pub en centavos de efectivo y medios no físicos, a partir del libro compartido de caja. Los egresos y reembolsos restan y las anulaciones quedan fuera del cálculo. La tabla inferior usa el endpoint del turno actual de la sesión con `box=pub`. Ambos alcances se calculan a partir de la misma fuente de movimientos, sin cambios de esquema.

@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useEffect, useState, type FormEvent } from "react";
 import { ErrorBox, Icon, Modal } from "../../components/UI";
 import { CardCharge } from "../../components/CardCharge";
@@ -34,7 +35,7 @@ const outsideSchedule = (turn: Turn) => /^(outside|extra):/.test(turn.window_key
 const sources = { manual: "Manual", folio: "Hoja de consumo", stay: "Cobro de estadía", pop: "Venta Pub", refund: "Reembolso" };
 const transferMethods = paymentMethods.filter((method) => method !== "Efectivo");
 
-export function Cash({ user, revision, onReservation }: { user: User; revision: Data; onReservation: (id: number) => void }) {
+export function Cash({ user, revision, summaryTarget, onReservation }: { user: User; revision: Data; summaryTarget: HTMLDivElement | null; onReservation: (id: number) => void }) {
   const admin = user.role !== "receptionist";
   const [box, setBox] = useState<"petty" | "pub">("petty");
   const boxLabel = box === "pub" ? "Caja Pub" : "Caja Chica";
@@ -86,9 +87,34 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
     setTransferMethod(account === "cash" ? "Efectivo" : "QR");
     setMovementKind(kind);
   }
+  const [pubBalance, setPubBalance] = useState<{ cash_cents: number; transfer_cents: number } | null>(null);
+  const [pubBalanceError, setPubBalanceError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    let request = 0;
+    function refresh() {
+      const id = ++request;
+      void api<{ cash_cents: number; transfer_cents: number }>("/cash/pub/summary").then((balance) => {
+        if (!active || id !== request) return;
+        setPubBalance(balance);
+        setPubBalanceError(false);
+      }).catch(() => {
+        if (active && id === request) setPubBalanceError(true);
+      });
+    }
+    refresh();
+    const timer = window.setInterval(refresh, 30000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [version, revision]);
+
   const isPub = box === "pub";
-  const byTurn = !isPub && (view === "current" || view === "history");
-  const path = isPub ? "/cash/pub" : view === "camilo" ? false : view === "monthly" ? `/cash/monthly?month=${month}&box=${box}`
+  const byTurn = view === "current" || view === "history";
+  const path = view === "camilo" ? false : view === "monthly" ? `/cash/monthly?month=${month}&box=${box}`
     : byTurn ? (view === "current" || turnId) && `/cash/turns/${view === "current" ? "current" : turnId}?box=${box}`
     : `/cash/daily?box=${box}`;
   useEffect(() => {
@@ -187,6 +213,19 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
   }
 
   return <div className="form-stack cash-workspace">
+    {summaryTarget && createPortal(
+      <section className="panel metric-card stat pub-balance" aria-label="Resumen de Caja Pub">
+        <span className="metric-icon"><Icon name="cash" size={24} /></span>
+        <div className="stat-copy" aria-live="polite" aria-atomic="true">
+          <span className="metric-label">Caja Pub · Saldo acumulado</span>
+          <strong className="metric-value">{pubBalance && !pubBalanceError ? money(pubBalance.cash_cents + pubBalance.transfer_cents) : "—"}</strong>
+          {pubBalanceError ? <small>Saldo no disponible</small> : pubBalance ?
+            <div className="pub-balance-breakdown">
+              <small>Efectivo <b>{money(pubBalance.cash_cents)}</b></small>
+              <small>Transferencias <b>{money(pubBalance.transfer_cents)}</b></small>
+            </div> : <small>Consultando saldo…</small>}
+        </div>
+      </section>, summaryTarget)}
     <div className="tabs" aria-label="Elegir caja" role="group">
       <button className={box === "petty" ? "active" : ""} aria-pressed={box === "petty"} onClick={() => switchBox("petty")} disabled={busy}>Caja Chica</button>
       <button className={box === "pub" ? "active" : ""} aria-pressed={box === "pub"} onClick={() => switchBox("pub")} disabled={busy}>Caja Pub</button>
@@ -230,10 +269,10 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
       </section> : <section className="panel">
         <div className="section-toolbar">
           <div>
-            <h2>{boxLabel} · {isPub ? "Registro continuo" : byTurn ? (turn?.id ? `Turno #${turn.id}` : view === "current" ? "Mi turno" : "Historial de turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
-            <p className="muted">{box === "pub" ? "Los ingresos y egresos se acumulan entre turnos." : "Hospedaje, servicios e ingresos de recepción."}</p>
+            <h2>{boxLabel} · {isPub ? "Mi turno" : byTurn ? (turn?.id ? `Turno #${turn.id}` : view === "current" ? "Mi turno" : "Historial de turnos") : view === "monthly" ? "Cuaderno mensual" : shortDate(today())}</h2>
+            <p className="muted">{box === "pub" ? "Ventas, ingresos y egresos de tu turno." : "Hospedaje, servicios e ingresos de recepción."}</p>
           </div>
-          {(isPub || view === "current" && turn?.started_at) && <div className="row-actions">
+          {view === "current" && turn?.started_at && <div className="row-actions">
             {box === "petty" && <button className="button primary" onClick={() => openMovement("income")}><Icon name="plus" size={16} /> Registrar ingreso</button>}
             <button type="button" className="button secondary" onClick={() => openMovement("expense")}>Registrar egreso</button>
           </div>}
@@ -269,9 +308,9 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
               onClick={() => setMovementFilter(movementFilter === "expense" ? "all" : "expense")}>
               Egresos <strong>{total(expenses)}</strong>
             </button>
-            <span className="ledger-net">{isPub ? "Saldo acumulado" : "Neto del período"} <strong>{total(income - expenses)}</strong></span>
+            <span className="ledger-net">{isPub ? "Neto del turno" : "Neto del período"} <strong>{total(income - expenses)}</strong></span>
           </div>
-          {account === "cash" && byTurn && <p className="muted">Saldo inicial del turno · {money(0)}</p>}
+          {!isPub && account === "cash" && byTurn && <p className="muted">Saldo inicial del turno · {money(0)}</p>}
           {account === "transfer" && <p className="muted">
             {transferMethods.map((medium) => `${medium} ${total(incomeByMethod.get(medium) ?? 0)}`).join(" · ")}
             {" · Ingresos por medio al importe base"}
@@ -283,7 +322,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
               aria-pressed={movementFilter === value} onClick={() => setMovementFilter(value)}>{label}</button>)}
         </div>
         {movementFilter === "expense" && <div className="cash-expense-heading">
-          <h3>{isPub ? "Egresos acumulados" : "Egresos del período"}</h3>
+          <h3>{isPub ? "Egresos del turno" : "Egresos del período"}</h3>
           <span>{accountEntries?.filter((row) => row.kind === "expense" && !row.voided).length ?? 0} vigentes · {total(expenses)}</span>
         </div>}
         {!entries && !error && <p className="quiet-state" role="status">Cargando movimientos…</p>}
@@ -292,7 +331,7 @@ export function Cash({ user, revision, onReservation }: { user: User; revision: 
           <table>
             <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th>Importe base</th><th>Acción</th></tr></thead>
             <tbody>{visibleEntries.map((row) => <tr key={`${row.source}-${row.id}`} className={row.voided ? "void-row" : row.kind === "expense" ? "ledger-expense-row" : undefined}>
-              <td>{shortDate(row.day, byTurn || isPub)}{row.recorded_at && <small className="cell-sub">Registro {localDateTime(row.recorded_at)}</small>}</td>
+              <td>{shortDate(row.day, byTurn)}{row.recorded_at && <small className="cell-sub">Registro {localDateTime(row.recorded_at)}</small>}</td>
               <td><span className={`tag ledger-kind ${row.kind}`}>{row.kind === "expense" ? "Egreso" : "Ingreso"}</span>
                 <strong>{row.detail}</strong>{row.accommodation && <small className="cell-sub"><strong>{row.accommodation}</strong></small>}<small className="cell-sub">
                   {box === "pub" && row.source === "manual" && row.kind === "income" ? "Ingreso manual histórico" : sources[row.source]}

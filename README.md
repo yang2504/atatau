@@ -1,6 +1,6 @@
 # Hostel Atatau
 
-Versión **v1.17.0** · 20 de noviembre de 2026. El ZIP de Windows incluye `VERSION.txt` para identificar la versión instalada.
+Versión **v1.18.0** · 20 de noviembre de 2026. El ZIP de Windows incluye `VERSION.txt` para identificar la versión instalada.
 
 Sistema web local para recepción. **Primera base funcional**, con React + TypeScript + Vite en `frontend/` y Node.js + Express + SQLite en `backend/`. Los datos se guardan en un archivo local; no se usa ningún servicio externo para operar.
 
@@ -47,7 +47,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 
 ## Qué funciona
 
-- **Caja Pub** muestra los ingresos y egresos de todos los turnos en un registro continuo. El saldo acumulado se calcula por separado para efectivo y transferencias. Cada movimiento conserva su autor y fecha. Las anulaciones quedan visibles y se excluyen del saldo. Caja Chica conserva su vista por turno.
+- **Caja** muestra arriba el saldo acumulado de **Caja Pub** de todos los turnos, con efectivo y transferencias por separado. Abajo, **Caja Pub → Mi turno** muestra solo los movimientos y el neto del turno activo de la persona conectada. Cada movimiento conserva su autor y fecha. Las anulaciones quedan visibles en el turno y se excluyen del saldo.
 
 - Calendario de 7, 14 o 21 días (14 al abrir) con encabezado fijo, iconos de personas y filas por cama. Permite seleccionar rangos, navegar por fechas y crear reservas. Todos los roles pueden editar y cancelar reservas. Arrastrar una reserva de una cama o privada conserva el número de noches. Las reservas de varias camas se reubican desde su formulario.
 - La cuadrícula ocupa el espacio disponible y se desplaza por separado, con las fechas y los nombres de habitación visibles al recorrer filas y columnas. Al abrir un modal, el fondo conserva su posición. En ventanas muy pequeñas también puedes desplazar la página para llegar a los controles.
@@ -80,7 +80,7 @@ Para generar el paquete de Windows desde el código, instala las dependencias co
 - La hoja muestra total, abonos y saldo junto a los datos de la reserva. El filtro **Con saldo** reúne los cargos pendientes. El importe y el estado se distinguen en rojo hasta cubrir el saldo.
 - Desde **Detalle de cargos** puedes agregar servicios, abonar una partida y consultar sus abonos. Los comprobantes de estadía y las devoluciones tienen un acceso junto a los cargos. En pantallas estrechas, cada cargo muestra los importes y acciones sin desplazamiento horizontal.
 - En una reserva puedes elegir una hoja por huésped o una cuenta conjunta a nombre de la persona encargada. Si dejas el encargado vacío, se usa el titular de la reserva.
-- **Caja Chica** registra automáticamente los abonos de servicios de recepción y los cobros de hospedaje. **Caja Pub** recibe las ventas cobradas en el Pub y los abonos de sus consumos cargados a huéspedes. En **Caja → Mi turno**, todos los roles pueden registrar los egresos del día en la caja correspondiente. El movimiento conserva el turno y el nombre de quien lo registró. La vista **Egresos** muestra el detalle del período para el medio seleccionado.
+- **Caja Chica** registra automáticamente los abonos de servicios de recepción y los cobros de hospedaje. **Caja Pub** recibe las ventas cobradas en el Pub y los abonos de sus consumos cargados a huéspedes. En **Caja**, todos los roles pueden registrar los egresos del día en la caja correspondiente. El movimiento conserva el turno y el nombre de quien lo registró. La vista **Egresos** muestra el detalle del período para el medio seleccionado.
 - Cada caja tiene dos pestañas de movimientos. **Efectivo** muestra las entradas y salidas físicas. **Transferencia** reúne QR, tarjeta, transferencia y otros medios, al importe base. Los cobros rápidos y los abonos aparecen automáticamente según el método registrado.
 - En **Turnos**, administración ajusta el inicio y fin de cada horario semanal. El turno de Caja se registra con el primer movimiento y mantiene sus horas al volver a iniciar sesión. Los movimientos fuera de horario se agrupan por persona y día de Bolivia, y aparecen como **Fuera de horario**. **Historial de turnos** muestra los registros con movimientos y su hora de cierre.
 - **Convertir tarifa de USD a Bs** consulta el tipo de cambio oficial del BCB al activar la casilla. Puedes aplicar el equivalente a una reserva, una extensión o el talonario. Si el BCB no responde, se usa el último dato oficial guardado mientras esté vigente. Cuando falta una cotización vigente, se usa el respaldo de **Configuración → Tipo de cambio para hospedaje**, si administración lo guardó. El importe aplicado se redondea al centavo y se guarda en bolivianos.

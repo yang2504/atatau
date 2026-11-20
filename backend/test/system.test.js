@@ -1068,6 +1068,25 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.ok(pubAcrossTurns.some((row) => row.source === "folio" && row.id === creditPayment.body.id && row.base_cents === 1000));
     assert.ok(pubAcrossTurns.some((row) => row.source === "refund" && row.id === pubRefund.body.id && row.base_cents === 250));
     assert.ok(pubAcrossTurns.some((row) => row.source === "manual" && row.voided && row.kind === "expense"));
+    const pubSummaryPath = "/cash/pub/summary";
+    assert.equal((await request(pubSummaryPath, undefined, "GET", "")).status, 401);
+    const expectedPub = { cash_cents: 0, transfer_cents: 0 };
+    for (const row of pubAcrossTurns.filter((row) => !row.voided)) {
+      expectedPub[row.method === "Efectivo" ? "cash_cents" : "transfer_cents"] +=
+        row.kind === "income" ? row.base_cents : -row.base_cents;
+    }
+    assert.deepEqual((await request(pubSummaryPath, undefined, "GET", cashLogin.cookie)).body, expectedPub);
+    const ownPub = (await request("/cash/turns/current?box=pub", undefined, "GET", cashLogin.cookie)).body.entries;
+    assert.ok(ownPub.some((row) => row.source === "refund" && row.id === pubRefund.body.id));
+    assert.ok(ownPub.every((row) => row.source !== "pop"));
+    const expensePub = await request("/cash", {
+      cash_box: "pub", day: today, kind: "expense", detail: "Hielo QA", method: "Efectivo", base_cents: 225,
+    }, "POST", cashLogin.cookie);
+    assert.equal(expensePub.status, 201);
+    assert.deepEqual((await request(pubSummaryPath, undefined, "GET", cashLogin.cookie)).body,
+      { ...expectedPub, cash_cents: expectedPub.cash_cents - 225 });
+    assert.equal((await request("/cash/" + expensePub.body.id + "/void", {}, "POST", cashLogin.cookie)).status, 200);
+    assert.deepEqual((await request(pubSummaryPath, undefined, "GET", cashLogin.cookie)).body, expectedPub);
     assert.equal((await request("/cash/daily?box=pub")).body.find((row) => row.source === "refund" && row.id === pubRefund.body.id).base_cents, 250);
     assert.equal((await request(correctPath, { ...correctCredit, expected_method: "QR" }, "PATCH")).status, 409);
     assert.ok(!(await request("/cash/daily")).body.some((row) => row.source === "refund" && row.id === pubRefund.body.id));

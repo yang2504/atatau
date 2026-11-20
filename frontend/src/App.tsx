@@ -199,6 +199,7 @@ export default function App() {
     [page, setPage] = useState("calendar"),
     [error, setError] = useState(""),
     [query, setQuery] = useState("");
+  const [cashHeading, setCashHeading] = useState<HTMLDivElement | null>(null);
   const [selectedFolio, setSelectedFolio] = useState<Folio | null>(null);
   const [folioReservation, setFolioReservation] = useState<Reservation | null>(null);
   const [summary, setSummary] = useState<"pax" | "free" | "arrivals" | "departures" | null>(null);
@@ -438,7 +439,7 @@ export default function App() {
           </div>
         </header>
         <div className="page-content" id="workspace-content" tabIndex={-1}>
-          <div className="page-heading" hidden={page === "calendar"}>
+          <div className={page === "cash" ? "page-heading cash-heading" : "page-heading"} hidden={page === "calendar"}>
             <div className="page-heading-main">
               <span className="page-icon"><Icon name={pageIcon} size={25} /></span>
               <div>
@@ -446,6 +447,7 @@ export default function App() {
                 <p>{descriptions[page]}</p>
               </div>
             </div>
+            {page === "cash" && <div className="cash-heading-summary" ref={setCashHeading} />}
             {(page === "calendar" || page === "reservations") && <button
               className="button primary"
               onClick={() => setEditor({})}
@@ -508,7 +510,7 @@ export default function App() {
           <div hidden={page !== "notes"} key={user.id}>
             <Notes data={data} user={user} onSaved={onSaved} active={page === "notes"} />
           </div>
-          {page === "cash" && <Cash user={user} revision={data} onReservation={(id) => {
+          {page === "cash" && <Cash user={user} revision={data} summaryTarget={cashHeading} onReservation={(id) => {
             const reservation = data.reservations.find((item) => item.id === id);
             if (reservation) openReservationFolios(reservation);
           }} />}
