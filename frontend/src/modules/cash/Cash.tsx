@@ -87,9 +87,11 @@ export function Cash({ user, revision, summaryTarget, onReservation }: { user: U
     setTransferMethod(account === "cash" ? "Efectivo" : "QR");
     setMovementKind(kind);
   }
+  const isPub = box === "pub";
   const [pubBalance, setPubBalance] = useState<{ cash_cents: number; transfer_cents: number } | null>(null);
   const [pubBalanceError, setPubBalanceError] = useState(false);
   useEffect(() => {
+    if (!isPub) return;
     let active = true;
     let request = 0;
     function refresh() {
@@ -110,9 +112,7 @@ export function Cash({ user, revision, summaryTarget, onReservation }: { user: U
       window.clearInterval(timer);
       window.removeEventListener("focus", refresh);
     };
-  }, [version, revision]);
-
-  const isPub = box === "pub";
+  }, [isPub, version, revision]);
   const byTurn = view === "current" || view === "history";
   const path = view === "camilo" ? false : view === "monthly" ? `/cash/monthly?month=${month}&box=${box}`
     : byTurn ? (view === "current" || turnId) && `/cash/turns/${view === "current" ? "current" : turnId}?box=${box}`
@@ -213,7 +213,7 @@ export function Cash({ user, revision, summaryTarget, onReservation }: { user: U
   }
 
   return <div className="form-stack cash-workspace">
-    {summaryTarget && createPortal(
+    {isPub && summaryTarget && createPortal(
       <section className="panel metric-card stat pub-balance" aria-label="Resumen de Caja Pub">
         <span className="metric-icon"><Icon name="cash" size={24} /></span>
         <div className="stat-copy" aria-live="polite" aria-atomic="true">
@@ -273,7 +273,7 @@ export function Cash({ user, revision, summaryTarget, onReservation }: { user: U
             <p className="muted">{box === "pub" ? "Ventas, ingresos y egresos de tu turno." : "Hospedaje, servicios e ingresos de recepción."}</p>
           </div>
           {view === "current" && turn?.started_at && <div className="row-actions">
-            {box === "petty" && <button className="button primary" onClick={() => openMovement("income")}><Icon name="plus" size={16} /> Registrar ingreso</button>}
+            <button className="button primary" onClick={() => openMovement("income")}><Icon name="plus" size={16} /> Registrar ingreso</button>
             <button type="button" className="button secondary" onClick={() => openMovement("expense")}>Registrar egreso</button>
           </div>}
           {view === "monthly" && <input type="month" aria-label="Mes del cuaderno" value={month} onChange={(e) => { if (e.target.value) setMonth(e.target.value); }} />}
@@ -334,7 +334,7 @@ export function Cash({ user, revision, summaryTarget, onReservation }: { user: U
               <td>{shortDate(row.day, byTurn)}{row.recorded_at && <small className="cell-sub">Registro {localDateTime(row.recorded_at)}</small>}</td>
               <td><span className={`tag ledger-kind ${row.kind}`}>{row.kind === "expense" ? "Egreso" : "Ingreso"}</span>
                 <strong>{row.detail}</strong>{row.accommodation && <small className="cell-sub"><strong>{row.accommodation}</strong></small>}<small className="cell-sub">
-                  {box === "pub" && row.source === "manual" && row.kind === "income" ? "Ingreso manual histórico" : sources[row.source]}
+                  {sources[row.source]}
                   {" · "}{row.author}{row.voided ? " · Anulado" : ""}</small>
                 {row.reservation_id && <button className="text-button" onClick={() => onReservation(row.reservation_id!)}>Abrir hoja</button>}</td>
               <td>{row.method}</td>

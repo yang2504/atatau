@@ -2865,6 +2865,7 @@ details[open] summary {
 }
 
 .cash-heading { flex-wrap: wrap; }
+.cash-heading-summary:empty { display: none; }
 .cash-heading-summary { min-width: 0; max-width: 100%; }
 .pub-balance {
   --metric-wave: 150px 76px;

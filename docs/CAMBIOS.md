@@ -1,5 +1,10 @@
 # Cambios y decisiones importantes
 
+## 2026-11-20 — v1.18.1
+
+- Caja Pub admite ingresos manuales. Se registran en el turno activo y suman al acumulado. Las ventas de inventario siguen ingresando automáticamente. La tarjeta del acumulado aparece solo en Caja Pub.
+- Validación con pruebas de API, comprobación visual y paquete Windows. Se comprobó el alta, el saldo, la separación de Caja Chica y la anulación del ingreso. No requiere migraciones. Pendiente en recepción, actualizar desde el ZIP.
+
 ## 2026-11-20 — v1.18.0
 
 - Caja muestra una tarjeta con el saldo acumulado de Caja Pub, con efectivo y transferencias por separado. La tabla del Pub vuelve a mostrar el turno activo de la persona conectada, con ingresos, egresos y neto propios.

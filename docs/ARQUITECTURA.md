@@ -90,7 +90,7 @@ Todas las rutas privadas requieren cookie `atatau_session`. Errores JSON `{ "err
 | `GET/POST /api/shifts`, `PUT /api/shifts/:id` | Consultar y ajustar el horario semanal desde administración |
 | `POST /api/folios/:id/payments/:paymentId/refunds` y variante `stay-payments` | Registrar un reembolso por importe base y motivo con una cuenta activa de recepción o administración |
 | `GET /api/cash/daily`, `GET /api/cash/monthly?month=AAAA-MM` | Caja por fecha para administración. La ruta diaria devuelve el turno actual para recepción. Cada movimiento incluye el importe base y su aporte al efectivo físico |
-| `POST /api/cash`, `POST /api/cash/:id/void` | Todos los roles pueden registrar movimientos manuales. Recepción registra los del día en su turno. La anulación requiere permiso administrativo. Caja Pub admite egresos manuales y recibe ingresos nuevos desde ventas de inventario |
+| `POST /api/cash`, `POST /api/cash/:id/void` | Todos los roles pueden registrar movimientos manuales. Recepción registra los del día en su turno. La anulación requiere permiso administrativo. Caja Pub admite ingresos y egresos manuales, además de los ingresos de ventas de inventario |
 | `GET /api/bcb/usd` | Cotización oficial, vigencia, disponibilidad y tipo de cambio aplicable a tarifas |
 | `GET/PUT /api/lodging-exchange-rate` | Consultar y configurar el tipo de cambio de respaldo. Solo administración escribe |
 | `GET /api/audit` | Historial paginado de reservas, hojas y caja, solo administración |

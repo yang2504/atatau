@@ -439,7 +439,6 @@ test("reservas, permisos y persistencia transaccional", async () => {
     assert.equal(manualCard.body.collected_cents, 1050);
     assert.equal(manualCard.body.cash_cents, 1000);
     assert.equal((await request("/cash", { ...manual, method: "QR" })).body.collected_cents, 1000);
-    assert.equal((await request("/cash", { ...manual, cash_box: "pub" })).status, 400);
     assert.equal((await request("/cash", { ...manual, day: "2000-01-01" }, "POST", receptionLogin.cookie)).status, 403);
     const expense = { ...manual, kind: "expense", detail: "Insumos" };
     assert.equal((await request("/cash", { ...expense, day: "2000-01-01" }, "POST", receptionLogin.cookie)).status, 403);
@@ -1079,6 +1078,18 @@ test("reservas, permisos y persistencia transaccional", async () => {
     const ownPub = (await request("/cash/turns/current?box=pub", undefined, "GET", cashLogin.cookie)).body.entries;
     assert.ok(ownPub.some((row) => row.source === "refund" && row.id === pubRefund.body.id));
     assert.ok(ownPub.every((row) => row.source !== "pop"));
+    const incomePub = await request("/cash", {
+      cash_box: "pub", day: today, kind: "income", detail: "Ingreso manual Pub QA", method: "Efectivo", base_cents: 1500,
+    }, "POST", cashLogin.cookie);
+    assert.equal(incomePub.status, 201);
+    assert.deepEqual((await request(pubSummaryPath, undefined, "GET", cashLogin.cookie)).body,
+      { ...expectedPub, cash_cents: expectedPub.cash_cents + 1500 });
+    const updatedPub = (await request("/cash/turns/current?box=pub", undefined, "GET", cashLogin.cookie)).body.entries;
+    assert.ok(updatedPub.some((row) => row.source === "manual" && row.id === incomePub.body.id && row.kind === "income"));
+    const petty = (await request("/cash/turns/current", undefined, "GET", cashLogin.cookie)).body.entries;
+    assert.ok(!petty.some((row) => row.source === "manual" && row.id === incomePub.body.id));
+    assert.equal((await request("/cash/" + incomePub.body.id + "/void", {}, "POST", cashLogin.cookie)).status, 200);
+    assert.deepEqual((await request(pubSummaryPath, undefined, "GET", cashLogin.cookie)).body, expectedPub);
     const expensePub = await request("/cash", {
       cash_box: "pub", day: today, kind: "expense", detail: "Hielo QA", method: "Efectivo", base_cents: 225,
     }, "POST", cashLogin.cookie);

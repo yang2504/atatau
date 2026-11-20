@@ -145,8 +145,6 @@ export function cashModule(db, admin) {
     const day = date(req.body.day);
     const kind = choice(req.body.kind, ["income", "expense"], "Movimiento");
     const box = cashBox(req.body.cash_box);
-    if (box === "pub" && kind === "income")
-      fail("Los ingresos de Caja Pub se registran desde Inventario Pub.", 400);
     if (req.user.role === "receptionist" && day !== localDay())
       fail("Recepción solo puede registrar movimientos del día.", 403);
     const detail = text(req.body.detail, "Concepto", 160);
